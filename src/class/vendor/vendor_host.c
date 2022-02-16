@@ -88,11 +88,11 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
 {
 
   int nbEndpoint = 0;
-
+  TU_LOG1("VENDOR checking Interface Class %u SubClass %u InterfaceProtocol %u\r\n", desc_itf->bInterfaceClass, desc_itf->bInterfaceSubClass, desc_itf->bInterfaceProtocol);
   //ONLY SUPPORT xbox 360 gamepad interface as defined in https://github.com/torvalds/linux/blob/master/drivers/input/joystick/xpad.c
   TU_VERIFY(desc_itf->bInterfaceClass == TUSB_CLASS_VENDOR_SPECIFIC);
   TU_VERIFY(desc_itf->bInterfaceSubClass == 93);
-  TU_VERIFY(desc_itf->bInterfaceProtocol == 129);
+  TU_VERIFY(desc_itf->bInterfaceProtocol == 1);
 
   TU_LOG1("VENDOR opening Interface %u (addr = %u) (endPoints %u)\r\n", desc_itf->bInterfaceNumber, dev_addr, desc_itf->bNumEndpoints);
 
