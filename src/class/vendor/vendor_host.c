@@ -113,18 +113,18 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
   while (nbEndpoint != 0) {
     p_desc = tu_desc_next(p_desc);
     tusb_desc_endpoint_t const * desc_ep = (tusb_desc_endpoint_t const *) p_desc;
-    TU_LOG1("VENDOR Endpoint %u type %u input %u size %u\r\n", nbEndpoint, desc_ep->bDescriptorType, tu_edpt_dir(desc_ep->bEndpointAddress), desc_ep->wMaxPacketSize.size);
+    TU_LOG1("VENDOR Endpoint %u type %u input %u size %u\r\n", nbEndpoint, desc_ep->bDescriptorType, tu_edpt_dir(desc_ep->bEndpointAddress), desc_ep->wMaxPacketSize);
     if(TUSB_DESC_ENDPOINT == desc_ep->bDescriptorType) {
       nbEndpoint--;
         TU_ASSERT( usbh_edpt_open(rhport, dev_addr, desc_ep) );
 
         if(tu_edpt_dir(desc_ep->bEndpointAddress) == TUSB_DIR_OUT) {
           vendor_itf->ep_out     = desc_ep->bEndpointAddress;
-          vendor_itf->epout_size = desc_ep->wMaxPacketSize.size;
+          vendor_itf->epout_size = desc_ep->wMaxPacketSize;
         }
         else {
           vendor_itf->ep_in     = desc_ep->bEndpointAddress;
-          vendor_itf->epin_size = desc_ep->wMaxPacketSize.size;
+          vendor_itf->epin_size = desc_ep->wMaxPacketSize;
         }
     }
   }
