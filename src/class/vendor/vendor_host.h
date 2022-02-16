@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -33,10 +33,18 @@
  extern "C" {
 #endif
 
-typedef struct {
-  pipe_handle_t pipe_in;
-  pipe_handle_t pipe_out;
-}custom_interface_info_t;
+
+//--------------------------------------------------------------------+
+// Class Driver Configuration
+//--------------------------------------------------------------------+
+
+#ifndef CFG_TUH_VENDOR_EPIN_BUFSIZE
+#define CFG_TUH_VENDOR_EPIN_BUFSIZE 64
+#endif
+
+#ifndef CFG_TUH_VENDOR_EPOUT_BUFSIZE
+#define CFG_TUH_VENDOR_EPOUT_BUFSIZE 64
+#endif
 
 //--------------------------------------------------------------------+
 // USBH-CLASS DRIVER API
@@ -49,16 +57,34 @@ static inline bool tusbh_custom_is_mounted(uint8_t dev_addr, uint16_t vendor_id,
   return false;
 }
 
-bool tusbh_custom_read(uint8_t dev_addr, uint16_t vendor_id, uint16_t product_id, void * p_buffer, uint16_t length);
-bool tusbh_custom_write(uint8_t dev_addr, uint16_t vendor_id, uint16_t product_id, void const * p_data, uint16_t length);
+//--------------------------------------------------------------------+
+// Callbacks (Weak is optional)
+//--------------------------------------------------------------------+
+
+// Invoked when device with vendor interface is mounted
+void tuh_vendor_mount_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report_desc, uint16_t desc_len);
+
+// Invoked when sent report to device successfully via interrupt endpoint
+TU_ATTR_WEAK void tuh_vendor_report_sent_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len);
+
+// Invoked when device with hid interface is un-mounted
+TU_ATTR_WEAK void tuh_vendor_umount_cb(uint8_t dev_addr, uint8_t instance);
+
+// Invoked when received report from device via interrupt endpoint
+// Note: if there is report ID (composite), it is 1st byte of report
+void tuh_vendor_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len);
+
+// Invoked when sent report to device successfully via interrupt endpoint
+TU_ATTR_WEAK void tuh_vendor_report_sent_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len);
 
 //--------------------------------------------------------------------+
 // Internal Class Driver API
 //--------------------------------------------------------------------+
-void cush_init(void);
-bool cush_open_subtask(uint8_t dev_addr, tusb_desc_interface_t const *p_interface_desc, uint16_t *p_length);
-void cush_isr(pipe_handle_t pipe_hdl, xfer_result_t event);
-void cush_close(uint8_t dev_addr);
+void         vendorh_init(void);
+bool         vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const *desc_itf, uint16_t max_len);
+bool         vendorh_set_config(uint8_t dev_addr, uint8_t itf_num);
+bool         vendorh_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes);
+void         vendorh_close(uint8_t dev_addr);
 
 #ifdef __cplusplus
  }

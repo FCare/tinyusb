@@ -180,10 +180,11 @@ static usbh_class_driver_t const usbh_class_drivers[] =
   #if CFG_TUH_VENDOR
     {
       DRIVER_NAME("VENDOR")
-      .init       = cush_init,
-      .open       = cush_open_subtask,
-      .xfer_cb    = cush_isr,
-      .close      = cush_close
+      .init       = vendorh_init,
+      .open       = vendorh_open,
+      .set_config = vendorh_set_config,
+      .xfer_cb    = vendorh_xfer_cb,
+      .close      = vendorh_close
     }
   #endif
 };
