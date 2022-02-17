@@ -113,7 +113,8 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
   while (nbEndpoint != 0) {
     p_desc = tu_desc_next(p_desc);
     tusb_desc_endpoint_t const * desc_ep = (tusb_desc_endpoint_t const *) p_desc;
-    TU_LOG1("VENDOR Endpoint %u type %u input %u size %u\r\n", nbEndpoint, desc_ep->bDescriptorType, tu_edpt_dir(desc_ep->bEndpointAddress), desc_ep->wMaxPacketSize);
+    TU_LOG1("VENDOR Endpoint %u type %u input %u size %u xfer %u sync %u usage %u\r\n", nbEndpoint, desc_ep->bDescriptorType, tu_edpt_dir(desc_ep->bEndpointAddress),
+    desc_ep->wMaxPacketSize, desc_ep->bmAttributes.xfer, desc_ep->bmAttributes.sync,  desc_ep->bmAttributes.usage);
     if(TUSB_DESC_ENDPOINT == desc_ep->bDescriptorType) {
       nbEndpoint--;
         TU_ASSERT( usbh_edpt_open(rhport, dev_addr, desc_ep) );
@@ -141,7 +142,12 @@ bool vendorh_set_config(uint8_t dev_addr, uint8_t itf_num) {
 
   tusb_control_request_t const request_1 =
   {
-    .bmRequestType_bit = 0xC1,
+    .bmRequestType_bit =
+    {
+      .recipient = TUSB_REQ_RCPT_INTERFACE,
+      .type      = TUSB_REQ_TYPE_VENDOR,
+      .direction = TUSB_DIR_IN
+    },
     .bRequest = 0x1,
     .wValue   = 0x100,
     .wIndex   = itf_num,
@@ -153,7 +159,12 @@ bool vendorh_set_config(uint8_t dev_addr, uint8_t itf_num) {
 
   tusb_control_request_t const request_2 =
   {
-    .bmRequestType_bit = 0xC1,
+    .bmRequestType_bit =
+    {
+      .recipient = TUSB_REQ_RCPT_INTERFACE,
+      .type      = TUSB_REQ_TYPE_VENDOR,
+      .direction = TUSB_DIR_IN
+    },
     .bRequest = 0x1,
     .wValue   = 0x0,
     .wIndex   = itf_num,
@@ -165,7 +176,12 @@ bool vendorh_set_config(uint8_t dev_addr, uint8_t itf_num) {
 
   tusb_control_request_t const request_3 =
   {
-    .bmRequestType_bit = 0xC1,
+    .bmRequestType_bit =
+    {
+      .recipient = TUSB_REQ_RCPT_DEVICE,
+      .type      = TUSB_REQ_TYPE_VENDOR,
+      .direction = TUSB_DIR_IN
+    },
     .bRequest = 0x1,
     .wValue   = 00,
     .wIndex   = itf_num,
@@ -186,7 +202,7 @@ bool tuh_vendor_receive_report(uint8_t dev_addr, uint8_t instance)
   TU_LOG1("VENDOR RECEIVE REPORT %u\r\n", dev_addr);
   // claim endpoint
   TU_VERIFY( usbh_edpt_claim(dev_addr, vendor_itf->ep_in) );
-
+  TU_LOG1("VENDOR VERIFIED REPORT %u\r\n", dev_addr);
   return usbh_edpt_xfer(dev_addr, vendor_itf->ep_in, vendor_itf->epin_buf, vendor_itf->epin_size);
 }
 
@@ -209,7 +225,7 @@ bool vendorh_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, ui
   uint8_t const dir = tu_edpt_dir(ep_addr);
   uint8_t const instance = get_instance_id_by_epaddr(dev_addr, ep_addr);
   vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
-
+TU_LOG1("VENDOR vendorh_xfer_cb (%u, %u)\r\n", dev_addr, instance);
   if ( dir == TUSB_DIR_IN )
   {
     TU_LOG1("Get Report callback (%u, %u)\r\n", dev_addr, instance);
