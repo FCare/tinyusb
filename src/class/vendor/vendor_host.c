@@ -202,7 +202,7 @@ bool tuh_vendor_receive_report(uint8_t dev_addr, uint8_t instance)
   TU_LOG1("VENDOR RECEIVE REPORT %u\r\n", dev_addr);
   // claim endpoint
   TU_VERIFY( usbh_edpt_claim(dev_addr, vendor_itf->ep_in) );
-  TU_LOG1("VENDOR VERIFIED REPORT %u\r\n", dev_addr);
+  TU_LOG1("VENDOR VERIFIED REPORT %u %d\r\n", dev_addr, vendor_itf->epin_size);
   return usbh_edpt_xfer(dev_addr, vendor_itf->ep_in, vendor_itf->epin_buf, vendor_itf->epin_size);
 }
 
