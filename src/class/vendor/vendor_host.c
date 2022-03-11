@@ -140,56 +140,6 @@ bool vendorh_set_config(uint8_t dev_addr, uint8_t itf_num) {
 
   TU_LOG1("VENDOR SET CONFIG %u  %u\r\n", dev_addr, itf_num);
 
-  tusb_control_request_t const request_1 =
-  {
-    .bmRequestType_bit =
-    {
-      .recipient = TUSB_REQ_RCPT_INTERFACE,
-      .type      = TUSB_REQ_TYPE_VENDOR,
-      .direction = TUSB_DIR_IN
-    },
-    .bRequest = 0x1,
-    .wValue   = 0x100,
-    .wIndex   = itf_num,
-    .wLength  = 20
-  };
-
-  TU_ASSERT( tuh_control_xfer(dev_addr, &request_1, NULL, NULL) );
-
-
-  tusb_control_request_t const request_2 =
-  {
-    .bmRequestType_bit =
-    {
-      .recipient = TUSB_REQ_RCPT_INTERFACE,
-      .type      = TUSB_REQ_TYPE_VENDOR,
-      .direction = TUSB_DIR_IN
-    },
-    .bRequest = 0x1,
-    .wValue   = 0x0,
-    .wIndex   = itf_num,
-    .wLength  = 8
-  };
-
-  TU_ASSERT( tuh_control_xfer(dev_addr, &request_2, NULL, NULL) );
-
-
-  tusb_control_request_t const request_3 =
-  {
-    .bmRequestType_bit =
-    {
-      .recipient = TUSB_REQ_RCPT_DEVICE,
-      .type      = TUSB_REQ_TYPE_VENDOR,
-      .direction = TUSB_DIR_IN
-    },
-    .bRequest = 0x1,
-    .wValue   = 00,
-    .wIndex   = itf_num,
-    .wLength  = 4
-  };
-
-  TU_ASSERT( tuh_control_xfer(dev_addr, &request_3, NULL, NULL) );
-
   config_driver_mount_complete(dev_addr, instance, NULL, 0);
 
   return true;
