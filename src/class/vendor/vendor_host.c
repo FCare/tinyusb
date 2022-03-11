@@ -52,6 +52,8 @@ typedef struct
 
   uint8_t epin_buf[CFG_TUH_VENDOR_EPIN_BUFSIZE];
   uint8_t epout_buf[CFG_TUH_VENDOR_EPOUT_BUFSIZE];
+
+  uint8_t itf_protocol;
 } vendorh_interface_t;
 
 
@@ -92,7 +94,7 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
   //ONLY SUPPORT xbox 360 gamepad interface as defined in https://github.com/torvalds/linux/blob/master/drivers/input/joystick/xpad.c
   TU_VERIFY(desc_itf->bInterfaceClass == TUSB_CLASS_VENDOR_SPECIFIC);
   TU_VERIFY(desc_itf->bInterfaceSubClass == 93);
-  TU_VERIFY(desc_itf->bInterfaceProtocol == 1);
+  TU_VERIFY((desc_itf->bInterfaceProtocol == 1) || (desc_itf->bInterfaceProtocol == 129));
 
   TU_LOG1("VENDOR opening Interface %u (addr = %u) (endPoints %u)\r\n", desc_itf->bInterfaceNumber, dev_addr, desc_itf->bNumEndpoints);
 
@@ -109,12 +111,13 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
   vendorh_interface_t* vendor_itf = get_instance(dev_addr, vendor_dev->inst_count);
   vendor_dev->inst_count++;
   vendor_itf->itf_num   = desc_itf->bInterfaceNumber;
+  vendor_itf->itf_protocol = desc_itf->bInterfaceProtocol;
 
   while (nbEndpoint != 0) {
     p_desc = tu_desc_next(p_desc);
     tusb_desc_endpoint_t const * desc_ep = (tusb_desc_endpoint_t const *) p_desc;
-    TU_LOG1("VENDOR Endpoint %u type %u input %u size %u xfer %u sync %u usage %u\r\n", nbEndpoint, desc_ep->bDescriptorType, tu_edpt_dir(desc_ep->bEndpointAddress),
-    desc_ep->wMaxPacketSize, desc_ep->bmAttributes.xfer, desc_ep->bmAttributes.sync,  desc_ep->bmAttributes.usage);
+    TU_LOG1("VENDOR Endpoint %u type %u input %u size %u xfer %u sync %u usage %u interval %d\r\n", nbEndpoint, desc_ep->bDescriptorType, tu_edpt_dir(desc_ep->bEndpointAddress),
+    desc_ep->wMaxPacketSize, desc_ep->bmAttributes.xfer, desc_ep->bmAttributes.sync,  desc_ep->bmAttributes.usage, desc_ep->bInterval);
     if(TUSB_DESC_ENDPOINT == desc_ep->bDescriptorType) {
       nbEndpoint--;
         TU_ASSERT( usbh_edpt_open(rhport, dev_addr, desc_ep) );
@@ -142,6 +145,20 @@ bool vendorh_set_config(uint8_t dev_addr, uint8_t itf_num) {
 
   config_driver_mount_complete(dev_addr, instance, NULL, 0);
 
+  return true;
+}
+
+bool tuh_vendor_send_packet_out(uint8_t dev_addr, uint8_t instance, uint8_t *buffer, uint8_t size) {
+  vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
+  TU_VERIFY( usbh_edpt_claim(dev_addr, vendor_itf->ep_out) );
+  TU_LOG1("VENDOR SEND PACKET%u %d(%d)\r\n", dev_addr, size, vendor_itf->epout_size);
+  usbh_edpt_xfer(dev_addr, vendor_itf->ep_out, buffer, size);
+}
+
+
+bool tuh_vendor_protocol_get(uint8_t dev_addr , uint8_t instance, uint8_t *val) {
+  vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
+  *val = vendor_itf->itf_protocol;
   return true;
 }
 
