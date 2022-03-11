@@ -79,6 +79,10 @@ TU_ATTR_WEAK void tuh_vendor_report_sent_cb(uint8_t dev_addr, uint8_t instance, 
 
 bool tuh_vendor_receive_report(uint8_t dev_addr, uint8_t instance);
 
+bool tuh_vendor_send_packet_out(uint8_t dev_addr, uint8_t instance, uint8_t *buffer, uint8_t size);
+
+bool tuh_vendor_protocol_get(uint8_t dev_addr , uint8_t instance, uint8_t *val);
+
 //--------------------------------------------------------------------+
 // Internal Class Driver API
 //--------------------------------------------------------------------+
