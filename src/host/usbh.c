@@ -842,12 +842,12 @@ static bool enum_request_addr0_device_desc(void)
 {
   // TODO probably doesn't need to open/close each enumeration
   uint8_t const addr0 = 0;
-  TU_ASSERT( usbh_edpt_control_open(addr0, 8) );
+  TU_ASSERT( usbh_edpt_control_open(addr0, 0x40) );
 
   // Get first 8 bytes of device descriptor for Control Endpoint size
-  TU_LOG2("Get 8 byte of Device Descriptor\r\n");
+  TU_LOG2("Get 40 byte of Device Descriptor\r\n");
 
-  TU_ASSERT(tuh_descriptor_device_get(addr0, _usbh_ctrl_buf, 8, enum_get_addr0_device_desc_complete));
+  TU_ASSERT(tuh_descriptor_device_get(addr0, _usbh_ctrl_buf, 0x40, enum_get_addr0_device_desc_complete));
   return true;
 }
 
