@@ -225,23 +225,49 @@ bool tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, 
 
   msc_cbw_t cbw;
   cbw_init(&cbw, lun);
- 
+
   cbw.total_bytes = block_count*p_msc->capacity[lun].block_size;
   cbw.dir         = TUSB_DIR_IN_MASK;
   cbw.cmd_len     = sizeof(scsi_read10_t);
- 
+
   scsi_read10_t const cmd_read10 =
   {
     .cmd_code    = SCSI_CMD_READ_10,
     .lba         = tu_htonl(lba),
     .block_count = tu_htons(block_count)
   };
- 
+
   memcpy(cbw.command, &cmd_read10, cbw.cmd_len);
- 
+
   return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
 }
- 
+
+bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, uint8_t power_condition, bool start, bool load_eject, tuh_msc_complete_cb_t complete_cb)
+{
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  TU_VERIFY(p_msc->mounted);
+
+  msc_cbw_t cbw;
+  cbw_init(&cbw, lun);
+
+  cbw.total_bytes = 0;
+  cbw.dir         = TUSB_DIR_IN_MASK;
+  cbw.cmd_len     = sizeof(scsi_start_stop_unit_t);
+
+  scsi_start_stop_unit_t const cmd_start_stop =
+  {
+    .cmd_code        = SCSI_CMD_START_STOP_UNIT,
+    .start           = start,
+    .load_eject      = load_eject,
+    .power_condition = power_condition,
+  };
+
+  memcpy(cbw.command, &cmd_start_stop, cbw.cmd_len);
+
+  return tuh_msc_scsi_command(dev_addr, &cbw, NULL, complete_cb);
+}
+
+
 bool tuh_msc_write10(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb)
 {
   msch_interface_t* p_msc = get_itf(dev_addr);
@@ -264,6 +290,32 @@ bool tuh_msc_write10(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_
   memcpy(cbw.command, &cmd_write10, cbw.cmd_len);
 
   return tuh_msc_scsi_command(dev_addr, &cbw, (void*)(uintptr_t) buffer, complete_cb);
+}
+
+bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf, uint8_t unit, uint8_t starting_track, tuh_msc_complete_cb_t complete_cb)
+{
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  TU_VERIFY(p_msc->mounted);
+
+  msc_cbw_t cbw;
+  cbw_init(&cbw, lun);
+
+  cbw.total_bytes = 804;
+  cbw.dir         = TUSB_DIR_IN_MASK;
+  cbw.cmd_len     = sizeof(scsi_read_toc_t);
+
+  scsi_read_toc_t const cmd_read_toc =
+  {
+    .cmd_code    = SCSI_CMD_READ_TOC,
+    .msf         = msf,
+    .logical_unit = unit,
+    .starting_track = starting_track,
+    .alloc_length = 804, //MAXIMUM TOC length
+  };
+
+  memcpy(cbw.command, &cmd_read_toc, cbw.cmd_len);
+
+  return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
 }
 
 #if 0
@@ -404,7 +456,7 @@ bool msch_set_config(uint8_t dev_addr, uint8_t itf_num)
   p_msc->configured = true;
 
   //------------- Get Max Lun -------------//
-  TU_LOG2("MSC Get Max Lun\r\n");
+  TU_LOG1("MSC Get Max Lun\r\n");
   tusb_control_request_t request =
   {
     .bmRequestType_bit =
@@ -434,7 +486,7 @@ static bool config_get_maxlun_complete (uint8_t dev_addr, tusb_control_request_t
   p_msc->max_lun++; // MAX LUN is minus 1 by specs
 
   // TODO multiple LUN support
-  TU_LOG2("SCSI Test Unit Ready\r\n");
+  TU_LOG1("SCSI Test Unit Ready\r\n");
   uint8_t const lun = 0;
   tuh_msc_test_unit_ready(dev_addr, lun, config_test_unit_ready_complete);
 
@@ -446,14 +498,16 @@ static bool config_test_unit_ready_complete(uint8_t dev_addr, msc_cbw_t const* c
   if (csw->status == 0)
   {
     // Unit is ready, read its capacity
-    TU_LOG2("SCSI Read Capacity\r\n");
+    TU_LOG1("SCSI Read Capacity\r\n");
+    if (tuh_msc_ready_cb) tuh_msc_ready_cb(dev_addr, true);
     tuh_msc_read_capacity(dev_addr, cbw->lun, (scsi_read_capacity10_resp_t*) ((void*) _msch_buffer), config_read_capacity_complete);
   }else
   {
     // Note: During enumeration, some device fails Test Unit Ready and require a few retries
     // with Request Sense to start working !!
     // TODO limit number of retries
-    TU_LOG2("SCSI Request Sense\r\n");
+    if (tuh_msc_ready_cb) tuh_msc_ready_cb(dev_addr, false);
+    TU_LOG1("SCSI Request Sense %x\r\n", csw->status);
     TU_ASSERT(tuh_msc_request_sense(dev_addr, cbw->lun, _msch_buffer, config_request_sense_complete));
   }
 
