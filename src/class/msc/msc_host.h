@@ -94,7 +94,14 @@ bool tuh_msc_write10(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_
 // simply call tuh_msc_get_block_count() and tuh_msc_get_block_size()
 bool tuh_msc_read_capacity(uint8_t dev_addr, uint8_t lun, scsi_read_capacity10_resp_t* response, tuh_msc_complete_cb_t complete_cb);
 
+// Perform SCSI Read Toc command.
+// Complete callback is invoked when SCSI op is complete.
+bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf, uint8_t unit, uint8_t starting_track, tuh_msc_complete_cb_t complete_cb);
+
 //------------- Application Callback -------------//
+
+//Invoked when drive is READY
+TU_ATTR_WEAK void tuh_msc_ready_cb(uint8_t dev_addr, bool ready);
 
 // Invoked when a device with MassStorage interface is mounted
 TU_ATTR_WEAK void tuh_msc_mount_cb(uint8_t dev_addr);
