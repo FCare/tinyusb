@@ -379,8 +379,7 @@ typedef struct TU_ATTR_PACKED
 
   uint8_t     : 1;
   uint8_t msf : 1;
-  uint8_t     : 3;
-  uint8_t logical_unit    : 3;
+  uint8_t     : 6;
 
   uint8_t TU_RESERVED;
   uint8_t TU_RESERVED;

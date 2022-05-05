@@ -73,10 +73,19 @@ static struct hw_endpoint *get_dev_ep(uint8_t dev_addr, uint8_t ep_addr)
   for ( uint32_t i = 1; i < TU_ARRAY_SIZE(ep_pool); i++ )
   {
     struct hw_endpoint *ep = &ep_pool[i];
-    if ( ep->configured && (ep->dev_addr == dev_addr) && (ep->ep_addr == ep_addr) ) return ep;
+    if ( ep->configured && (ep->dev_addr == dev_addr) && (tu_edpt_number(ep->ep_addr) == num) ) return ep;
   }
 
   return NULL;
+}
+
+static struct hw_endpoint *get_epx_ep(void)
+{
+    uint8_t dev_addr = (usb_hw->dev_addr_ctrl & USB_ADDR_ENDP_ADDRESS_BITS) >> USB_ADDR_ENDP_ADDRESS_LSB;
+    uint8_t ep_addr = (usb_hw->dev_addr_ctrl & USB_ADDR_ENDP_ENDPOINT_BITS) >> USB_ADDR_ENDP_ENDPOINT_LSB;
+    pico_trace("  epx dev %d ep %d\n", dev_addr, ep_addr);
+
+    return get_dev_ep(dev_addr, ep_addr);
 }
 
 TU_ATTR_ALWAYS_INLINE static inline uint8_t dev_speed(void)
@@ -123,7 +132,10 @@ static void __tusb_irq_path_func(hw_handle_buff_status)(void)
     if (remaining_buffers & bit)
     {
         remaining_buffers &= ~bit;
-        struct hw_endpoint *ep = &epx;
+
+        struct hw_endpoint *ep = get_epx_ep();
+        assert(ep);
+        assert(ep->active);
 
         uint32_t ep_ctrl = *ep->endpoint_control;
         if (ep_ctrl & EP_CTRL_DOUBLE_BUFFERED_BITS)
@@ -166,7 +178,9 @@ static void __tusb_irq_path_func(hw_trans_complete)(void)
   if (usb_hw->sie_ctrl & USB_SIE_CTRL_SEND_SETUP_BITS)
   {
     pico_trace("Sent setup packet\n");
-    struct hw_endpoint *ep = &epx;
+
+    struct hw_endpoint *ep = get_epx_ep();
+    assert(ep);
     assert(ep->active);
     // Set transferred length to 8 for a setup packet
     ep->xferred_len = 8;
@@ -184,10 +198,12 @@ static void __tusb_irq_path_func(hcd_rp2040_irq)(void)
     uint32_t status = usb_hw->ints;
     uint32_t handled = 0;
 
+    TU_LOG(2, "+IRQ %x\n", status);
+
     if (status & USB_INTS_HOST_CONN_DIS_BITS)
     {
         handled |= USB_INTS_HOST_CONN_DIS_BITS;
-        
+
         if (dev_speed())
         {
             hcd_event_device_attach(RHPORT_NATIVE, true);
@@ -245,6 +261,8 @@ static void __tusb_irq_path_func(hcd_rp2040_irq)(void)
     {
         panic("Unhandled IRQ 0x%x\n", (uint) (status ^ handled));
     }
+
+    TU_LOG(2, "-IRQ\n");
 }
 
 void __tusb_irq_path_func(hcd_int_handler)(uint8_t rhport)
@@ -255,10 +273,12 @@ void __tusb_irq_path_func(hcd_int_handler)(uint8_t rhport)
 
 static struct hw_endpoint *_next_free_interrupt_ep(void)
 {
-    struct hw_endpoint *ep = NULL;
+    if (transfer_type == TUSB_XFER_CONTROL)
+        return &epx;
+
     for (uint i = 1; i < TU_ARRAY_SIZE(ep_pool); i++)
     {
-        ep = &ep_pool[i];
+        struct hw_endpoint *ep = &ep_pool[i];
         if (!ep->configured)
         {
             // Will be configured by _hw_endpoint_init / _hw_endpoint_allocate
@@ -266,18 +286,19 @@ static struct hw_endpoint *_next_free_interrupt_ep(void)
             return ep;
         }
     }
-    return ep;
+    return NULL;
 }
 
 static struct hw_endpoint *_hw_endpoint_allocate(uint8_t transfer_type)
 {
     struct hw_endpoint *ep = NULL;
 
+    ep = _next_free_ep(transfer_type);
+    assert(ep);
+
     if (transfer_type == TUSB_XFER_INTERRUPT)
     {
-        ep = _next_free_interrupt_ep();
         pico_info("Allocate interrupt ep %d\n", ep->interrupt_num);
-        assert(ep);
         ep->buffer_control = &usbh_dpram->int_ep_buffer_ctrl[ep->interrupt_num].ctrl;
         ep->endpoint_control = &usbh_dpram->int_ep_ctrl[ep->interrupt_num].ctrl;
         // 0 for epx (double buffered): TODO increase to 1024 for ISO
@@ -288,7 +309,7 @@ static struct hw_endpoint *_hw_endpoint_allocate(uint8_t transfer_type)
     }
     else
     {
-        ep = &epx;
+        pico_info("Allocate ep %d\n", ep->interrupt_num);
         ep->buffer_control = &usbh_dpram->epx_buf_ctrl;
         ep->endpoint_control = &usbh_dpram->epx_ctrl;
         ep->hw_data_buf = &usbh_dpram->epx_data[0];
@@ -517,7 +538,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
     (void) rhport;
 
     pico_trace("hcd_edpt_xfer dev_addr %d, ep_addr 0x%x, len %d\n", dev_addr, ep_addr, buflen);
-    
+
     uint8_t const ep_num = tu_edpt_number(ep_addr);
     tusb_dir_t const ep_dir = tu_edpt_dir(ep_addr);
 
@@ -540,7 +561,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
     // If a normal transfer (non-interrupt) then initiate using
     // sie ctrl registers. Otherwise interrupt ep registers should
     // already be configured
-    if (ep == &epx) {
+    if (ep->transfer_type != TUSB_XFER_INTERRUPT) {
         hw_endpoint_xfer_start(ep, buffer, buflen);
 
         // That has set up buffer control, endpoint control etc
@@ -552,8 +573,6 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
         // Set pre if we are a low speed device on full speed hub
         flags |= need_pre(dev_addr) ? USB_SIE_CTRL_PREAMBLE_EN_BITS : 0;
 
-        // TODO: Work out why this delay needs to be added, and replace it with something more suitable.
-        busy_wait_ms(2); // <-- This has been added because it causes the code to work most of the time!
         usb_hw->sie_ctrl = flags;
     }else
     {
@@ -566,6 +585,8 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
 bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet[8])
 {
     (void) rhport;
+
+    pico_trace("hcd_setup_send dev_addr %d\n", dev_addr);
 
     // Copy data into setup packet buffer
     for(uint8_t i=0; i<8; i++)

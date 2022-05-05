@@ -292,7 +292,7 @@ bool tuh_msc_write10(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_
   return tuh_msc_scsi_command(dev_addr, &cbw, (void*)(uintptr_t) buffer, complete_cb);
 }
 
-bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf, uint8_t unit, uint8_t starting_track, tuh_msc_complete_cb_t complete_cb)
+bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf, uint8_t starting_track, uint8_t nb_tracks, tuh_msc_complete_cb_t complete_cb)
 {
   msch_interface_t* p_msc = get_itf(dev_addr);
   TU_VERIFY(p_msc->mounted);
@@ -300,7 +300,7 @@ bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf,
   msc_cbw_t cbw;
   cbw_init(&cbw, lun);
 
-  cbw.total_bytes = 804;
+  cbw.total_bytes = 4 + 8*nb_tracks;
   cbw.dir         = TUSB_DIR_IN_MASK;
   cbw.cmd_len     = sizeof(scsi_read_toc_t);
 
@@ -308,9 +308,8 @@ bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf,
   {
     .cmd_code    = SCSI_CMD_READ_TOC,
     .msf         = msf,
-    .logical_unit = unit,
     .starting_track = starting_track,
-    .alloc_length = 804, //MAXIMUM TOC length
+    .alloc_length = 4 + 8*nb_tracks, //MAXIMUM TOC length
   };
 
   memcpy(cbw.command, &cmd_read_toc, cbw.cmd_len);
@@ -364,7 +363,7 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
   msch_interface_t* p_msc = get_itf(dev_addr);
   msc_cbw_t const * cbw = &p_msc->cbw;
   msc_csw_t       * csw = &p_msc->csw;
-
+TU_LOG2("MSC Xfer stage %d %x %x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer);
   switch (p_msc->stage)
   {
     case MSC_STAGE_CMD:
