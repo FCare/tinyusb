@@ -219,7 +219,7 @@ static void hcd_rp2040_irq(void)
     if (status & USB_INTS_HOST_CONN_DIS_BITS)
     {
         handled |= USB_INTS_HOST_CONN_DIS_BITS;
-        
+
         if (dev_speed())
         {
             hcd_event_device_attach(ROOT_PORT, true);
@@ -251,7 +251,7 @@ static void hcd_rp2040_irq(void)
     if (status & USB_INTS_STALL_BITS)
     {
         // We have rx'd a stall from the device
-        TU_LOG(2, "Stall REC\n");
+        printf("Stall REC\n");
         handled |= USB_INTS_STALL_BITS;
         usb_hw_clear->sie_status = USB_SIE_STATUS_STALL_REC_BITS;
         hw_xfer_complete(get_epx_ep(), XFER_RESULT_STALLED);
@@ -414,10 +414,10 @@ bool hcd_init(uint8_t rhport)
     // Enable in host mode with SOF / Keep alive on
     usb_hw->main_ctrl = USB_MAIN_CTRL_CONTROLLER_EN_BITS | USB_MAIN_CTRL_HOST_NDEVICE_BITS;
     usb_hw->sie_ctrl = SIE_CTRL_BASE;
-    usb_hw->inte = USB_INTE_BUFF_STATUS_BITS      | 
-                   USB_INTE_HOST_CONN_DIS_BITS    | 
-                   USB_INTE_HOST_RESUME_BITS      | 
-                   USB_INTE_STALL_BITS            | 
+    usb_hw->inte = USB_INTE_BUFF_STATUS_BITS      |
+                   USB_INTE_HOST_CONN_DIS_BITS    |
+                   USB_INTE_HOST_RESUME_BITS      |
+                   USB_INTE_STALL_BITS            |
                    USB_INTE_TRANS_COMPLETE_BITS   |
                    USB_INTE_ERROR_RX_TIMEOUT_BITS |
                    USB_INTE_ERROR_DATA_SEQ_BITS   ;
@@ -532,7 +532,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
     (void) rhport;
 
     pico_trace("hcd_edpt_xfer dev_addr %d, ep_addr 0x%x, len %d\n", dev_addr, ep_addr, buflen);
-    
+
     uint8_t const ep_num = tu_edpt_number(ep_addr);
     tusb_dir_t const ep_dir = tu_edpt_dir(ep_addr);
 
@@ -567,7 +567,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
         flags |= need_pre(dev_addr) ? USB_SIE_CTRL_PREAMBLE_EN_BITS : 0;
 
         // TODO: Work out why this delay needs to be added, and replace it with something more suitable.
-        busy_wait_ms(2); // <-- This has been added because it causes the code to work most of the time!
+        busy_wait_ms(25); // <-- This has been added because it causes the code to work most of the time!
         usb_hw->sie_ctrl = flags;
     }else
     {
