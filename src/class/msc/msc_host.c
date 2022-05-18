@@ -309,7 +309,7 @@ bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf,
     .cmd_code    = SCSI_CMD_READ_TOC,
     .msf         = msf,
     .starting_track = starting_track,
-    .alloc_length = 4 + 8*nb_tracks, //MAXIMUM TOC length
+    .alloc_length = tu_htons(4 + 8*nb_tracks), //MAXIMUM TOC length
   };
 
   memcpy(cbw.command, &cmd_read_toc, cbw.cmd_len);
