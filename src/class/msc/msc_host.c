@@ -133,6 +133,10 @@ bool tuh_msc_scsi_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, tu
 
   // TODO claim endpoint
 
+  TU_LOG1("Scsi Cmd: ");
+  for (int i =0 ; i<cbw->cmd_len; i++) TU_LOG1("0x%x ", cbw->command[i]);
+  TU_LOG1("\n");
+
   p_msc->cbw = *cbw;
   p_msc->stage = MSC_STAGE_CMD;
   p_msc->buffer = data;
@@ -238,6 +242,42 @@ bool tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, 
   };
 
   memcpy(cbw.command, &cmd_read10, cbw.cmd_len);
+
+  return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
+}
+
+bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint32_t block_count, tuh_msc_complete_cb_t complete_cb)
+{
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  TU_VERIFY(p_msc->mounted);
+
+  msc_cbw_t cbw;
+  cbw_init(&cbw, lun);
+
+  uint32_t block_size = p_msc->capacity[lun].block_size;
+
+  block_size = 2352+96;
+
+  cbw.total_bytes = block_count*block_size; // arevoir
+  cbw.dir         = TUSB_DIR_IN_MASK;
+  cbw.cmd_len     = sizeof(scsi_read_cd_t);
+
+  scsi_read_cd_t const cmd_read_cd =
+  {
+    .cmd_code    = SCSI_CMD_READ_CD,
+    .lba         = tu_htonl(lba),
+    .block_count[0] = (block_count>>16)&0xFF, //MSB
+    .block_count[1] = (block_count>>8)&0xFF,
+    .block_count[2] = block_count&0xFF, //LSB
+    .sector_type = 0b000,
+    .sync = 1,
+    .header_code = 0b11,
+    .user_data = 1,
+    .edc_ecc = 1,
+    .sub_channel = 0b001,
+  };
+
+  memcpy(cbw.command, &cmd_read_cd, cbw.cmd_len);
 
   return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
 }

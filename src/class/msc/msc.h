@@ -122,6 +122,7 @@ typedef enum
   SCSI_CMD_READ_10                      = 0x28, ///< The READ (10) command requests that the device server read the specified logical block(s) and transfer them to the data-in buffer.
   SCSI_CMD_WRITE_10                     = 0x2A, ///< The WRITE (10) command requests thatthe device server transfer the specified logical block(s) from the data-out buffer and write them.
   SCSI_CMD_READ_TOC                     = 0x43,
+  SCSI_CMD_READ_CD                      = 0xBE,
 }scsi_cmd_type_t;
 
 /// SCSI Sense Key
@@ -372,6 +373,31 @@ typedef struct TU_ATTR_PACKED
   uint16_t block_count ; ///< Number of Blocks used by this command
   uint8_t  control     ;
 } scsi_read10_t, scsi_write10_t;
+
+typedef struct TU_ATTR_PACKED
+{
+  uint8_t  cmd_code    ; ///< SCSI OpCode
+
+  uint8_t reladr      : 1; //LSB
+  uint8_t             : 1;
+  uint8_t sector_type : 3;
+  uint8_t             : 3;
+
+  uint32_t lba         ; ///< The first Logical Block Address (LBA) accessed by this command
+  uint8_t  block_count[3];
+
+  uint8_t             : 1; //LSB
+  uint8_t error_field : 2;
+  uint8_t edc_ecc     : 1;
+  uint8_t user_data   : 1;
+  uint8_t header_code : 2;
+  uint8_t sync        : 1;
+
+  uint8_t sub_channel : 3;
+  uint8_t             : 5;
+
+  uint8_t  control     ;
+} scsi_read_cd_t;
 
 typedef struct TU_ATTR_PACKED
 {
