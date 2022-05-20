@@ -123,6 +123,7 @@ typedef enum
   SCSI_CMD_WRITE_10                     = 0x2A, ///< The WRITE (10) command requests thatthe device server transfer the specified logical block(s) from the data-out buffer and write them.
   SCSI_CMD_READ_TOC                     = 0x43,
   SCSI_CMD_READ_CD                      = 0xBE,
+  SCSI_CMD_READ_SUB_CHANNEL             = 0x42,
 }scsi_cmd_type_t;
 
 /// SCSI Sense Key
@@ -291,18 +292,15 @@ typedef struct TU_ATTR_PACKED
   uint8_t cmd_code;
 
   uint8_t immded : 1;
-  uint8_t        : 7;
+  uint8_t        : 4;
+  uint8_t lun    : 3;
 
   uint8_t TU_RESERVED;
-
-  uint8_t power_condition_mod : 4;
-  uint8_t                     : 4;
+  uint8_t TU_RESERVED;
 
   uint8_t start           : 1;
   uint8_t load_eject      : 1;
-  uint8_t no_flush        : 1;
-  uint8_t                 : 1;
-  uint8_t power_condition : 4;
+  uint8_t                 : 6;
 
   uint8_t control;
 } scsi_start_stop_unit_t;
@@ -398,6 +396,31 @@ typedef struct TU_ATTR_PACKED
 
   uint8_t  control     ;
 } scsi_read_cd_t;
+
+
+typedef struct TU_ATTR_PACKED
+{
+  uint8_t  cmd_code    ; ///< SCSI OpCode
+
+  uint8_t             : 1; //LSB
+  uint8_t msf         : 1;
+  uint8_t             : 6;
+
+  uint8_t             : 6;
+  uint8_t  subq       : 1;
+  uint8_t             : 1;
+
+  uint8_t parameter;
+
+  uint8_t TU_RESERVED;
+  uint8_t TU_RESERVED;
+
+  uint8_t track_number;
+
+  uint16_t alloc_length;
+
+  uint8_t  control     ;
+} scsi_read_sub_channel_t;
 
 typedef struct TU_ATTR_PACKED
 {

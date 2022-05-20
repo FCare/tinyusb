@@ -282,7 +282,34 @@ bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba
   return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
 }
 
-bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, uint8_t power_condition, bool start, bool load_eject, tuh_msc_complete_cb_t complete_cb)
+
+bool  tuh_msc_read_sub_channel(uint8_t dev_addr, uint8_t lun, void * buffer, tuh_msc_complete_cb_t complete_cb)
+{
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  TU_VERIFY(p_msc->mounted);
+
+  msc_cbw_t cbw;
+  cbw_init(&cbw, lun);
+
+  cbw.total_bytes = 12+4; // arevoir
+  cbw.dir         = TUSB_DIR_IN_MASK;
+  cbw.cmd_len     = sizeof(scsi_read_sub_channel_t);
+
+  scsi_read_sub_channel_t const cmd_read_sub_channel=
+  {
+    .cmd_code    = SCSI_CMD_READ_SUB_CHANNEL,
+    .subq        = 1,
+    .msf         = 1,
+    .parameter   = 0x01,
+    .alloc_length = tu_htons(12+4),
+  };
+
+  memcpy(cbw.command, &cmd_read_sub_channel, cbw.cmd_len);
+
+  return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
+}
+
+bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, bool start, bool load_eject, tuh_msc_complete_cb_t complete_cb)
 {
   msch_interface_t* p_msc = get_itf(dev_addr);
   TU_VERIFY(p_msc->mounted);
@@ -299,7 +326,7 @@ bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, uint8_t power_condition, 
     .cmd_code        = SCSI_CMD_START_STOP_UNIT,
     .start           = start,
     .load_eject      = load_eject,
-    .power_condition = power_condition,
+    .lun = lun,
   };
 
   memcpy(cbw.command, &cmd_start_stop, cbw.cmd_len);
