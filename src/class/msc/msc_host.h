@@ -104,6 +104,8 @@ bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, bool start, bool load_eje
 
 bool  tuh_msc_read_sub_channel(uint8_t dev_addr, uint8_t lun, void * buffer, tuh_msc_complete_cb_t complete_cb);
 
+void checkForMedia(uint8_t dev_addr, uint8_t lun);
+
 //------------- Application Callback -------------//
 
 //Invoked when drive is READY
@@ -114,6 +116,8 @@ TU_ATTR_WEAK void tuh_msc_mount_cb(uint8_t dev_addr);
 
 // Invoked when a device with MassStorage interface is unmounted
 TU_ATTR_WEAK void tuh_msc_umount_cb(uint8_t dev_addr);
+
+TU_ATTR_WEAK void tuh_msc_enumerated_cb(uint8_t dev_addr);
 
 //--------------------------------------------------------------------+
 // Internal Class Driver API

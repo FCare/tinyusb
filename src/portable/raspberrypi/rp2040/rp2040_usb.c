@@ -114,6 +114,7 @@ static uint32_t __tusb_irq_path_func(prepare_ep_buffer)(struct hw_endpoint *ep, 
 {
   uint16_t const buflen = tu_min16(ep->remaining_len, ep->wMaxPacketSize);
   ep->remaining_len = (uint16_t)(ep->remaining_len - buflen);
+  // printf("Remaining %d\n", ep->remaining_len);
 
   uint32_t buf_ctrl = buflen | USB_BUF_CTRL_AVAIL;
 

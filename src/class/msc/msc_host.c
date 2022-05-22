@@ -312,7 +312,7 @@ bool  tuh_msc_read_sub_channel(uint8_t dev_addr, uint8_t lun, void * buffer, tuh
 bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, bool start, bool load_eject, tuh_msc_complete_cb_t complete_cb)
 {
   msch_interface_t* p_msc = get_itf(dev_addr);
-  TU_VERIFY(p_msc->mounted);
+  TU_VERIFY(p_msc->configured);
 
   msc_cbw_t cbw;
   cbw_init(&cbw, lun);
@@ -333,7 +333,6 @@ bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, bool start, bool load_eje
 
   return tuh_msc_scsi_command(dev_addr, &cbw, NULL, complete_cb);
 }
-
 
 bool tuh_msc_write10(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb)
 {
@@ -561,10 +560,23 @@ static void config_get_maxlun_complete (tuh_xfer_t* xfer)
   p_msc->max_lun = (XFER_RESULT_SUCCESS == xfer->result) ? _msch_buffer[0] : 0;
   p_msc->max_lun++; // MAX LUN is minus 1 by specs
 
-  // TODO multiple LUN support
-  TU_LOG1("SCSI Test Unit Ready\r\n");
-  uint8_t const lun = 0;
-  tuh_msc_test_unit_ready(daddr, lun, config_test_unit_ready_complete);
+
+  // notify usbh that driver enumeration is complete
+  usbh_driver_set_config_complete(daddr, p_msc->itf_num);
+
+  // // TODO multiple LUN support
+  if (tuh_msc_enumerated_cb) tuh_msc_enumerated_cb(daddr);
+  else {
+    uint8_t const lun = 0;
+    checkForMedia(daddr, lun);
+  }
+
+  return true;
+}
+
+void checkForMedia(uint8_t dev_addr, uint8_t lun) {
+  TU_LOG1("checkForMedia\r\n");
+  tuh_msc_test_unit_ready(dev_addr, lun, config_test_unit_ready_complete);
 }
 
 static bool config_test_unit_ready_complete(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw)
@@ -590,8 +602,11 @@ static bool config_test_unit_ready_complete(uint8_t dev_addr, msc_cbw_t const* c
 
 static bool config_request_sense_complete(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw)
 {
+  // printf("Sense key %x\n", _msch_buffer[2] & 0xF);
+
   TU_ASSERT(csw->status == 0);
-  TU_ASSERT(tuh_msc_test_unit_ready(dev_addr, cbw->lun, config_test_unit_ready_complete));
+  if (!tuh_msc_enumerated_cb) TU_ASSERT(tuh_msc_test_unit_ready(dev_addr, cbw->lun, config_test_unit_ready_complete));
+  else tuh_msc_enumerated_cb(dev_addr);
   return true;
 }
 
@@ -609,9 +624,6 @@ static bool config_read_capacity_complete(uint8_t dev_addr, msc_cbw_t const* cbw
   // Mark enumeration is complete
   p_msc->mounted = true;
   if (tuh_msc_mount_cb) tuh_msc_mount_cb(dev_addr);
-
-  // notify usbh that driver enumeration is complete
-  usbh_driver_set_config_complete(dev_addr, p_msc->itf_num);
 
   return true;
 }
