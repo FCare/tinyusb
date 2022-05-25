@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -124,6 +124,7 @@ typedef enum
   SCSI_CMD_READ_TOC                     = 0x43,
   SCSI_CMD_READ_CD                      = 0xBE,
   SCSI_CMD_READ_SUB_CHANNEL             = 0x42,
+  SCSI_CMD_READ_HEADER                  = 0x44,
 }scsi_cmd_type_t;
 
 /// SCSI Sense Key
@@ -396,6 +397,23 @@ typedef struct TU_ATTR_PACKED
 
   uint8_t  control     ;
 } scsi_read_cd_t;
+
+
+typedef struct TU_ATTR_PACKED
+{
+  uint8_t  cmd_code    ; ///< SCSI OpCode
+
+  uint8_t             : 1; //LSB
+  uint8_t msf         : 1;
+  uint8_t             : 3;
+  uint8_t lun         : 3;
+
+  uint32_t lba         ; ///< The first Logical Block Address (LBA) accessed by this command
+
+  uint8_t TU_RESERVED;
+  uint16_t alloc_length;
+  uint8_t  control     ;
+} scsi_read_header_t;
 
 
 typedef struct TU_ATTR_PACKED
