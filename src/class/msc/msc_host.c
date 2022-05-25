@@ -283,7 +283,7 @@ bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba
 }
 
 
-bool  tuh_msc_read_sub_channel(uint8_t dev_addr, uint8_t lun, void * buffer, tuh_msc_complete_cb_t complete_cb)
+bool tuh_msc_read_sub_channel(uint8_t dev_addr, uint8_t lun, void * buffer, tuh_msc_complete_cb_t complete_cb)
 {
   msch_interface_t* p_msc = get_itf(dev_addr);
   TU_VERIFY(p_msc->mounted);
@@ -305,6 +305,31 @@ bool  tuh_msc_read_sub_channel(uint8_t dev_addr, uint8_t lun, void * buffer, tuh
   };
 
   memcpy(cbw.command, &cmd_read_sub_channel, cbw.cmd_len);
+
+  return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
+}
+
+bool tuh_msc_read_header(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, tuh_msc_complete_cb_t complete_cb)
+{
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  TU_VERIFY(p_msc->mounted);
+
+  msc_cbw_t cbw;
+  cbw_init(&cbw, lun);
+
+  cbw.total_bytes = 8;
+  cbw.dir         = TUSB_DIR_IN_MASK;
+  cbw.cmd_len     = sizeof(scsi_read_header_t);
+
+  scsi_read_header_t const cmd_read_header=
+  {
+    .cmd_code    = SCSI_CMD_READ_HEADER,
+    .msf         = 1,
+    .lba         = tu_htonl(lba),
+    .alloc_length = tu_htons(8),
+  };
+
+  memcpy(cbw.command, &cmd_read_header, cbw.cmd_len);
 
   return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
 }
