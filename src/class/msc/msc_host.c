@@ -246,7 +246,7 @@ bool tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, 
   return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
 }
 
-bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint32_t block_count, tuh_msc_complete_cb_t complete_cb)
+bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint32_t block_count, bool subQ, tuh_msc_complete_cb_t complete_cb)
 {
   msch_interface_t* p_msc = get_itf(dev_addr);
   TU_VERIFY(p_msc->mounted);
@@ -256,7 +256,8 @@ bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba
 
   uint32_t block_size = p_msc->capacity[lun].block_size;
 
-  block_size = 2352+96;
+  block_size = 2352;
+  if (subQ) block_size += 96;
 
   cbw.total_bytes = block_count*block_size; // arevoir
   cbw.dir         = TUSB_DIR_IN_MASK;
@@ -274,7 +275,7 @@ bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba
     .header_code = 0b11,
     .user_data = 1,
     .edc_ecc = 1,
-    .sub_channel = 0b001,
+    .sub_channel = subQ?0b001:0b000,
   };
 
   memcpy(cbw.command, &cmd_read_cd, cbw.cmd_len);
@@ -406,6 +407,30 @@ bool tuh_msc_read_toc(uint8_t dev_addr, uint8_t lun, void * buffer, uint8_t msf,
   memcpy(cbw.command, &cmd_read_toc, cbw.cmd_len);
 
   return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
+}
+
+bool tuh_msc_set_speed(uint8_t dev_addr, uint8_t lun, uint16_t read_speed, uint16_t write_speed, tuh_msc_complete_cb_t complete_cb)
+{
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  TU_VERIFY(p_msc->mounted);
+
+  msc_cbw_t cbw;
+  cbw_init(&cbw, lun);
+
+  cbw.total_bytes = 0;
+  cbw.dir         = TUSB_DIR_IN_MASK;
+  cbw.cmd_len     = sizeof(scsi_set_speed_t);
+
+  scsi_set_speed_t const cmd_set_speed =
+  {
+    .cmd_code    = SCSI_CMD_SET_SPEED,
+    .read_speed  = tu_htons(read_speed),
+    .write_speed = tu_htons(write_speed),
+  };
+
+  memcpy(cbw.command, &cmd_set_speed, cbw.cmd_len);
+
+  return tuh_msc_scsi_command(dev_addr, &cbw, NULL, complete_cb);
 }
 
 #if 0

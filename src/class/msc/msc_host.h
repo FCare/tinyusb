@@ -84,7 +84,7 @@ bool tuh_msc_request_sense(uint8_t dev_addr, uint8_t lun, void *resposne, tuh_ms
 // Complete callback is invoked when SCSI op is complete.
 bool  tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb);
 
-bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint32_t block_count, tuh_msc_complete_cb_t complete_cb);
+bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint32_t block_count, bool subQ, tuh_msc_complete_cb_t complete_cb);
 
 // Perform SCSI Write 10 command. Write n blocks starting from LBA to device
 // Complete callback is invoked when SCSI op is complete.
@@ -105,6 +105,8 @@ bool tuh_msc_start_stop(uint8_t dev_addr, uint8_t lun, bool start, bool load_eje
 bool tuh_msc_read_sub_channel(uint8_t dev_addr, uint8_t lun, void * buffer, tuh_msc_complete_cb_t complete_cb);
 
 bool tuh_msc_read_header(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, tuh_msc_complete_cb_t complete_cb);
+
+bool tuh_msc_set_speed(uint8_t dev_addr, uint8_t lun, uint16_t read_speed, uint16_t write_speed, tuh_msc_complete_cb_t complete_cb);
 
 void checkForMedia(uint8_t dev_addr, uint8_t lun);
 

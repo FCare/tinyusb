@@ -125,6 +125,7 @@ typedef enum
   SCSI_CMD_READ_CD                      = 0xBE,
   SCSI_CMD_READ_SUB_CHANNEL             = 0x42,
   SCSI_CMD_READ_HEADER                  = 0x44,
+  SCSI_CMD_SET_SPEED                    = 0xBB,
 }scsi_cmd_type_t;
 
 /// SCSI Sense Key
@@ -459,6 +460,23 @@ typedef struct TU_ATTR_PACKED
 
   uint8_t control;
 } scsi_read_toc_t;
+
+typedef struct TU_ATTR_PACKED
+{
+  uint8_t cmd_code;
+  uint8_t TU_RESERVED;
+
+  uint16_t read_speed;
+  uint16_t write_speed;
+
+  uint8_t TU_RESERVED;
+  uint8_t TU_RESERVED;
+  uint8_t TU_RESERVED;
+  uint8_t TU_RESERVED;
+  uint8_t TU_RESERVED;
+
+  uint8_t control;
+} scsi_set_speed_t;
 
 TU_VERIFY_STATIC(sizeof(scsi_read10_t) == 10, "size is not correct");
 TU_VERIFY_STATIC(sizeof(scsi_write10_t) == 10, "size is not correct");
