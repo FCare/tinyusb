@@ -51,6 +51,15 @@ bool tusb_init(void)
   return true;
 }
 
+bool tusb_reset(void)
+{
+#if CFG_TUH_ENABLED
+  TU_ASSERT( tuh_reset(TUH_OPT_RHPORT) ); // init host stack
+#endif
+
+  return true;
+}
+
 bool tusb_inited(void)
 {
   bool ret = false;

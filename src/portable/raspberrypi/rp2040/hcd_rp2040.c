@@ -389,6 +389,12 @@ static void _hw_endpoint_init(struct hw_endpoint *ep, uint8_t dev_addr, uint8_t 
 //--------------------------------------------------------------------+
 // HCD API
 //--------------------------------------------------------------------+
+bool hcd_reset(uint8_t rhport) {
+  hcd_init(rhport);
+
+  return true;
+}
+
 bool hcd_init(uint8_t rhport)
 {
   (void) rhport;

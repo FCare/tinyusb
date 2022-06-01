@@ -338,6 +338,11 @@ bool tuh_inited(void)
   return _usbh_controller != CONTROLLER_INVALID;
 }
 
+
+bool tuh_reset(uint8_t controller_id) {
+  TU_ASSERT(hcd_reset(controller_id));
+}
+
 bool tuh_init(uint8_t controller_id)
 {
   // skip if already initialized
