@@ -392,6 +392,11 @@ bool tuh_inited(void)
   return _usbh_initialized;
 }
 
+
+bool tuh_reset(uint8_t rhport) {
+  TU_ASSERT(hcd_reset(rhport));
+}
+
 bool tuh_init(uint8_t rhport)
 {
   // skip if already initialized

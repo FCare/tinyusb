@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -107,6 +107,8 @@ typedef struct {
 
 // Initialize controller to host mode
 bool hcd_init(uint8_t rhport);
+
+bool hcd_reset(uint8_t rhport);
 
 // Interrupt Handler
 void hcd_int_handler(uint8_t rhport);

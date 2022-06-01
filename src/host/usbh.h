@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -46,6 +46,8 @@ typedef bool (*tuh_control_complete_cb_t)(uint8_t daddr, tusb_control_request_t 
 
 // Init host stack
 bool tuh_init(uint8_t rhport);
+
+bool tuh_reset(uint8_t rhport);
 
 // Check if host stack is already initialized
 bool tuh_inited(void);
