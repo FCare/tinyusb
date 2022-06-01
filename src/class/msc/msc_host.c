@@ -480,6 +480,11 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
   msc_cbw_t const * cbw = &p_msc->cbw;
   msc_csw_t       * csw = &p_msc->csw;
 TU_LOG2("MSC Xfer stage %d %x %x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer);
+  if (event != XFER_RESULT_SUCCESS) {
+    csw->status = MSC_CSW_STATUS_FAILED;
+    if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+    return true;
+  }
   switch (p_msc->stage)
   {
     case MSC_STAGE_CMD:
