@@ -133,9 +133,9 @@ bool tuh_msc_scsi_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, tu
 
   // TODO claim endpoint
 
-  TU_LOG1("Scsi Cmd: ");
-  for (int i =0 ; i<cbw->cmd_len; i++) TU_LOG1("0x%x ", cbw->command[i]);
-  TU_LOG1("\n");
+  TU_LOG2("Scsi Cmd: ");
+  for (int i =0 ; i<cbw->cmd_len; i++) TU_LOG2("0x%x ", cbw->command[i]);
+  TU_LOG2("\n");
 
   p_msc->cbw = *cbw;
   p_msc->stage = MSC_STAGE_CMD;
