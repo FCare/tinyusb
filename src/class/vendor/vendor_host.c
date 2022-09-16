@@ -120,7 +120,7 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
     desc_ep->wMaxPacketSize, desc_ep->bmAttributes.xfer, desc_ep->bmAttributes.sync,  desc_ep->bmAttributes.usage, desc_ep->bInterval);
     if(TUSB_DESC_ENDPOINT == desc_ep->bDescriptorType) {
       nbEndpoint--;
-        TU_ASSERT( usbh_edpt_open(rhport, dev_addr, desc_ep) );
+        TU_ASSERT( tuh_edpt_open(dev_addr, desc_ep) );
 
         if(tu_edpt_dir(desc_ep->bEndpointAddress) == TUSB_DIR_OUT) {
           vendor_itf->ep_out     = desc_ep->bEndpointAddress;
