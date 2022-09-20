@@ -657,7 +657,10 @@ static bool config_request_sense_complete(uint8_t dev_addr, msc_cbw_t const* cbw
 
 static bool config_read_capacity_complete(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw)
 {
-  TU_ASSERT(csw->status == 0);
+  if (csw->status != 0) {
+    // device is not ready yet..
+    return false;
+  }
 
   msch_interface_t* p_msc = get_itf(dev_addr);
 
