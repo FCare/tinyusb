@@ -196,6 +196,11 @@ static void hcd_rp2040_irq(void)
         usb_hw_clear->sie_status = USB_SIE_STATUS_SPEED_BITS;
     }
 
+    if (status & USB_INTE_DEV_SUSPEND_BITS) {
+      handled |= USB_INTE_DEV_SUSPEND_BITS;
+      TU_LOG2("Device suspended");
+    }
+
     if (status & USB_INTS_BUFF_STATUS_BITS)
     {
         handled |= USB_INTS_BUFF_STATUS_BITS;
@@ -370,10 +375,11 @@ bool hcd_init(uint8_t rhport)
     // Enable in host mode with SOF / Keep alive on
     usb_hw->main_ctrl = USB_MAIN_CTRL_CONTROLLER_EN_BITS | USB_MAIN_CTRL_HOST_NDEVICE_BITS;
     usb_hw->sie_ctrl = SIE_CTRL_BASE;
-    usb_hw->inte = USB_INTE_BUFF_STATUS_BITS      | 
-                   USB_INTE_HOST_CONN_DIS_BITS    | 
-                   USB_INTE_HOST_RESUME_BITS      | 
-                   USB_INTE_STALL_BITS            | 
+    usb_hw->inte = USB_INTE_BUFF_STATUS_BITS      |
+                   USB_INTE_HOST_CONN_DIS_BITS    |
+                   USB_INTE_HOST_RESUME_BITS      |
+                   USB_INTE_DEV_SUSPEND_BITS      |
+                   USB_INTE_STALL_BITS            |
                    USB_INTE_TRANS_COMPLETE_BITS   |
                    USB_INTE_ERROR_RX_TIMEOUT_BITS |
                    USB_INTE_ERROR_DATA_SEQ_BITS   ;
@@ -547,8 +553,12 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
     usb_hw->dev_addr_ctrl = dev_addr;
 
     // Set pre if we are a low speed device on full speed hub
-    uint32_t const flags = SIE_CTRL_BASE | USB_SIE_CTRL_SEND_SETUP_BITS | USB_SIE_CTRL_START_TRANS_BITS |
+    uint32_t flags = SIE_CTRL_BASE | USB_SIE_CTRL_SEND_SETUP_BITS |
                            (need_pre(dev_addr) ? USB_SIE_CTRL_PREAMBLE_EN_BITS : 0);
+
+    usb_hw->sie_ctrl = flags;
+
+    flags |= USB_SIE_CTRL_START_TRANS_BITS;
 
     usb_hw->sie_ctrl = flags;
 
