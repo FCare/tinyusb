@@ -237,6 +237,9 @@ static bool usbh_edpt_control_open(uint8_t dev_addr, uint8_t max_packet_size);
 // from usbh_control.c
 extern bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes);
 
+static bool enum_request_set_addr();
+static bool enum_request_set_addr_from_event(hcd_event_t* event);
+
 //--------------------------------------------------------------------+
 // PUBLIC API (Parameter Verification is required)
 //--------------------------------------------------------------------+
@@ -458,12 +461,8 @@ bool tuh_init(uint8_t rhport)
     }
     @endcode
  */
-void tuh_task(void)
-{
-  // Skip if stack is not initialized
-  if ( !tusb_inited() ) return;
 
-  // Loop until there is no more events in the queue
+static void handle_osal_queue() {
   while (1)
   {
     hcd_event_t event;
@@ -531,9 +530,23 @@ void tuh_task(void)
         if ( event.func_call.func ) event.func_call.func(event.func_call.param);
       break;
 
+      case HCD_EVENT_DEVICE_SET_ADDR:
+        TU_LOG2("USBH DEVICE SET ADDRESS\r\n");
+        enum_request_set_addr_from_event(&event);
+      break;
+
       default: break;
     }
   }
+}
+void tuh_task(void)
+{
+  // Skip if stack is not initialized
+  if ( !tusb_inited() ) return;
+
+  // Loop until there is no more events in the queue
+  handle_osal_queue();
+
 }
 
 //--------------------------------------------------------------------+
@@ -635,8 +648,24 @@ void hcd_event_device_remove(uint8_t hostid, bool in_isr)
     .event_id = HCD_EVENT_DEVICE_REMOVE
   };
 
+TU_LOG2("!!!!DETACh detected!!!\n");
   event.connection.hub_addr = 0;
   event.connection.hub_port = 0;
+
+  hcd_event_handler(&event, in_isr);
+}
+
+void hcd_event_device_set_addr(uint8_t hostid, bool in_isr) {
+  hcd_event_t event =
+  {
+    .rhport   = hostid,
+    .event_id = HCD_EVENT_DEVICE_SET_ADDR
+  };
+
+  event.connection.hub_addr = 0;
+  event.connection.hub_port = 0;
+
+TU_LOG2("!!!!Set Addr detected!!!\n");
 
   hcd_event_handler(&event, in_isr);
 }
@@ -734,7 +763,6 @@ void usbh_driver_set_config_complete(uint8_t dev_addr, uint8_t itf_num)
 //--------------------------------------------------------------------+
 
 static bool enum_request_addr0_device_desc(void);
-static bool enum_request_set_addr(void);
 
 static bool enum_get_addr0_device_desc_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
 static bool enum_set_address_complete           (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
@@ -820,14 +848,18 @@ static bool enum_new_device(hcd_event_t* event)
   if (_dev0.hub_addr == 0)
   {
     // wait until device is stable TODO non blocking
+    TU_LOG2("Will wait\r\n");
     osal_task_delay(RESET_DELAY);
+    TU_LOG2("Has wait\r\n");
 
     // device unplugged while delaying
-    if ( !hcd_port_connect_status(_dev0.rhport) ) return true;
+    if ( !hcd_port_connect_status(_dev0.rhport) ) {
+      TU_LOG2("Device abort detected\n");
+      return true;
+    }
 
     _dev0.speed = hcd_port_speed_get(_dev0.rhport );
     TU_LOG2("%s Speed\r\n", tusb_speed_str[_dev0.speed]);
-
     enum_request_addr0_device_desc();
   }
 #if CFG_TUH_HUB
@@ -889,8 +921,7 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
     // connected directly to roothub
     hcd_port_reset( _dev0.rhport ); // reset port after 8 byte descriptor
     osal_task_delay(RESET_DELAY);
-
-    enum_request_set_addr();
+    hcd_event_device_set_addr(_dev0.rhport, false);
   }
 #if CFG_TUH_HUB
   else
@@ -904,7 +935,21 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
   return true;
 }
 
-static bool enum_request_set_addr(void)
+static bool enum_request_set_addr_from_event(hcd_event_t* event)
+{
+
+  _dev0.rhport   = event->rhport; // TODO refractor integrate to device_pool
+  _dev0.hub_addr = event->connection.hub_addr;
+  _dev0.hub_port = event->connection.hub_port;
+
+  if (!hcd_port_connect_status(_dev0.rhport) ) {
+    TU_LOG2("Device is not connected anymore - do not ask for set adress\n");
+    return false;
+  }
+  else return enum_request_set_addr();
+}
+
+static bool enum_request_set_addr()
 {
   uint8_t const addr0 = 0;
   tusb_desc_device_t const * desc_device = (tusb_desc_device_t const*) _usbh_ctrl_buf;

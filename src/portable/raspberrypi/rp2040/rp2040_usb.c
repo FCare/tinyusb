@@ -75,6 +75,7 @@ void hw_endpoint_reset_transfer(struct hw_endpoint *ep)
   ep->remaining_len = 0;
   ep->xferred_len = 0;
   ep->user_buf = 0;
+  _hw_endpoint_buffer_control_set_value32(ep, 0);
 }
 
 void _hw_endpoint_buffer_control_update32(struct hw_endpoint *ep, uint32_t and_mask, uint32_t or_mask) {
@@ -104,7 +105,10 @@ void _hw_endpoint_buffer_control_update32(struct hw_endpoint *ep, uint32_t and_m
 #endif
         }
     }
-    *ep->buffer_control = value;
+    *ep->buffer_control = value & ~USB_BUF_CTRL_AVAIL;
+    if (value & USB_BUF_CTRL_AVAIL) {
+      *ep->buffer_control = value;
+    }
 }
 
 // prepare buffer, return buffer control
