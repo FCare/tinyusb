@@ -122,6 +122,8 @@ bool tuh_descriptor_string_serial_get(uint8_t daddr, uint16_t language_id, void*
 // Invoked when device is mounted (configured)
 TU_ATTR_WEAK void tuh_mount_cb (uint8_t daddr);
 
+TU_ATTR_WEAK void tuh_msc_enumerate_cb (uint8_t daddr);
+
 /// Invoked when device is unmounted (bus reset/unplugged)
 TU_ATTR_WEAK void tuh_umount_cb(uint8_t daddr);
 

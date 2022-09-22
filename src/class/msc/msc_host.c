@@ -645,7 +645,7 @@ static bool config_get_maxlun_complete (uint8_t dev_addr, tusb_control_request_t
   p_msc->max_lun = (XFER_RESULT_SUCCESS == result) ? _msch_buffer[0] : 0;
   p_msc->max_lun++; // MAX LUN is minus 1 by specs
 
-
+  if (tuh_msc_enumerate_cb) tuh_msc_enumerate_cb(dev_addr);
   // notify usbh that driver enumeration is complete
   usbh_driver_set_config_complete(dev_addr, p_msc->itf_num);
 
