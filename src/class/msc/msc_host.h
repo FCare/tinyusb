@@ -108,7 +108,7 @@ bool tuh_msc_read_header(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t 
 
 bool tuh_msc_set_speed(uint8_t dev_addr, uint8_t lun, uint16_t read_speed, uint16_t write_speed, tuh_msc_complete_cb_t complete_cb);
 
-void checkForMedia(uint8_t dev_addr, uint8_t lun);
+bool checkForMedia(uint8_t dev_addr, uint8_t lun);
 
 //------------- Application Callback -------------//
 

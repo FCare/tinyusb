@@ -272,7 +272,7 @@ void osal_task_delay(uint32_t msec)
   (void) msec;
 
   const uint32_t start = hcd_frame_number(TUH_OPT_RHPORT);
-  while ( ( hcd_frame_number(TUH_OPT_RHPORT) - start ) < msec ) {}
+  while ( ( hcd_frame_number(TUH_OPT_RHPORT) - start ) < msec ) {handle_osal_queue();}
 }
 #endif
 

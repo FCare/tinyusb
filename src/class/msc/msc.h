@@ -167,8 +167,7 @@ typedef struct TU_ATTR_PACKED
   uint8_t cmd_code     ; ///< SCSI OpCode for \ref SCSI_CMD_INQUIRY
   uint8_t reserved1    ;
   uint8_t page_code    ;
-  uint8_t reserved2    ;
-  uint8_t alloc_length ; ///< specifies the maximum number of bytes that USB host has allocated in the Data-In Buffer. An allocation length of zero specifies that no data shall be transferred.
+  uint16_t alloc_length ; ///< specifies the maximum number of bytes that USB host has allocated in the Data-In Buffer. An allocation length of zero specifies that no data shall be transferred.
   uint8_t control      ;
 } scsi_inquiry_t, scsi_request_sense_t;
 
