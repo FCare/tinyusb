@@ -177,6 +177,7 @@ bool hub_port_set_feature(uint8_t hub_addr, uint8_t hub_port, uint8_t feature, t
 bool hub_port_reset(uint8_t hub_addr, uint8_t hub_port, tuh_control_complete_cb_t complete_cb);
 bool hub_port_get_status(uint8_t hub_addr, uint8_t hub_port, void* resp, tuh_control_complete_cb_t complete_cb);
 bool hub_status_pipe_queue(uint8_t dev_addr);
+bool hub_port_get_status_from_addr(uint8_t hub_addr, uint8_t hub_port);
 
 //--------------------------------------------------------------------+
 // Internal Class Driver API
@@ -185,6 +186,7 @@ void hub_init       (void);
 bool hub_open       (uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const *itf_desc, uint16_t max_len);
 bool hub_set_config (uint8_t dev_addr, uint8_t itf_num);
 bool hub_xfer_cb    (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32_t xferred_bytes);
+bool hub_set_mount  (uint8_t dev_addr, uint8_t itf_num);
 void hub_close      (uint8_t dev_addr);
 
 #ifdef __cplusplus

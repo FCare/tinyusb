@@ -178,7 +178,8 @@ static usbh_class_driver_t const usbh_class_drivers[] =
       .open       = hub_open,
       .set_config = hub_set_config,
       .xfer_cb    = hub_xfer_cb,
-      .close      = hub_close
+      .close      = hub_close,
+      .set_mount  = hub_set_mount
     },
   #endif
 
@@ -491,6 +492,16 @@ static void handle_osal_queue() {
         #endif
       break;
 
+      case HCD_EVENT_PORT_CHANGE:
+        #if CFG_TUH_HUB
+        {
+          TU_LOG2("HCD_EVENT_PORT_CHANGE\r\n");
+          hub_port_get_status_from_addr(event.dev_addr, event.port);
+        }
+
+        #endif
+        break;
+
       case HCD_EVENT_XFER_COMPLETE:
       {
         uint8_t const ep_addr = event.xfer_complete.ep_addr;
@@ -623,6 +634,7 @@ void hcd_event_xfer_complete(uint8_t dev_addr, uint8_t ep_addr, uint32_t xferred
     }
   };
 
+printf("Send HCD complete %x\n", event.dev_addr);
   hcd_event_handler(&event, in_isr);
 }
 
@@ -730,9 +742,11 @@ static uint8_t get_new_address(bool is_hub)
 void usbh_driver_set_config_complete(uint8_t dev_addr, uint8_t itf_num)
 {
   usbh_device_t* dev = get_device(dev_addr);
-
+TU_LOG2("usbh_driver_set_config_complete %x %x %x\n", dev_addr, itf_num, CFG_TUH_INTERFACE_MAX);
   for(itf_num++; itf_num < CFG_TUH_INTERFACE_MAX; itf_num++)
   {
+    TU_LOG2("usbh_driver_set_config_complete LOOP %x %x %x\n", dev_addr, itf_num, CFG_TUH_INTERFACE_MAX);
+
     // continue with next valid interface
     // TODO skip IAD binding interface such as CDCs
     uint8_t const drv_id = dev->itf2drv[itf_num];
@@ -744,12 +758,25 @@ void usbh_driver_set_config_complete(uint8_t dev_addr, uint8_t itf_num)
       break;
     }
   }
-
+TU_LOG2("usbh_driver_set_config_complete end %x %x %x\n", dev_addr, itf_num, CFG_TUH_INTERFACE_MAX);
   // all interface are configured
   if (itf_num == CFG_TUH_INTERFACE_MAX)
   {
     // Invoke callback if available
     if (tuh_mount_cb) tuh_mount_cb(dev_addr);
+
+    for(int i=0; i < CFG_TUH_INTERFACE_MAX; i++)
+    {
+      // continue with next valid interface
+      // TODO skip IAD binding interface such as CDCs
+      uint8_t const drv_id = dev->itf2drv[i];
+      if (drv_id != DRVID_INVALID)
+      {
+        usbh_class_driver_t const * driver = &usbh_class_drivers[drv_id];
+        TU_LOG2("%s set mount: itf = %u\r\n", driver->name, i);
+        driver->set_mount(dev_addr, i);
+      }
+    }
   }
 }
 
@@ -783,13 +810,12 @@ static bool enum_hub_clear_reset0_complete(uint8_t dev_addr, tusb_control_reques
 
 static bool enum_hub_clear_reset1_complete(uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
+  printf("enum_hub_clear_reset1_complete\n");
   (void) dev_addr; (void) request;
   TU_ASSERT(XFER_RESULT_SUCCESS == result);
 
-  enum_request_set_addr();
-
-  // done with hub, waiting for next data on status pipe
-  (void) hub_status_pipe_queue( _dev0.hub_addr );
+  hcd_event_device_set_addr(_dev0.rhport, false);
+  // enum_request_set_addr();
 
   return true;
 }
@@ -868,6 +894,7 @@ static bool enum_new_device(hcd_event_t* event)
   {
     // wait until device is stable
     osal_task_delay(RESET_DELAY);
+    printf("enum new device\n");
     TU_ASSERT( hub_port_get_status(_dev0.hub_addr, _dev0.hub_port, _usbh_ctrl_buf, enum_hub_get_status0_complete) );
   }
 #endif // CFG_TUH_HUB
@@ -890,6 +917,7 @@ static bool enum_request_addr0_device_desc(void)
 
 static bool hub_port_reset_complete(uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
+    printf("hub_port_reset_complete\n");
     TU_ASSERT( hub_port_get_status(_dev0.hub_addr, _dev0.hub_port, _usbh_ctrl_buf, enum_hub_get_status1_complete) );
     return true;
 }
@@ -902,11 +930,6 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
 
   if (XFER_RESULT_SUCCESS != result)
   {
-#if CFG_TUH_HUB
-    // TODO remove, waiting for next data on status pipe
-    if (_dev0.hub_addr != 0) hub_status_pipe_queue(_dev0.hub_addr);
-#endif
-
     return false;
   }
 

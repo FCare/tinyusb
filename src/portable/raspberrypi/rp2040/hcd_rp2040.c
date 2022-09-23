@@ -126,6 +126,7 @@ static void hw_xfer_complete(struct hw_endpoint *ep, xfer_result_t xfer_result)
     uint8_t ep_addr = ep->ep_addr;
     uint xferred_len = ep->xferred_len;
     hw_endpoint_reset_transfer(ep);
+    printf("Send complete %x\n", dev_addr);
     hcd_event_xfer_complete(dev_addr, ep_addr, xferred_len, xfer_result, true);
 }
 
@@ -233,8 +234,13 @@ static void hcd_rp2040_irq(void)
         usb_hw_clear->sie_status = USB_SIE_STATUS_SPEED_BITS;
     }
 
-    if (status & USB_INTE_DEV_SUSPEND_BITS) {
-      handled |= USB_INTE_DEV_SUSPEND_BITS;
+    if (status & USB_INTS_BUS_RESET_BITS) {
+      handled |= USB_INTS_BUS_RESET_BITS;
+      TU_LOG2("BUS RESET");
+    }
+
+    if (status & USB_INTS_DEV_SUSPEND_BITS) {
+      handled |= USB_INTS_DEV_SUSPEND_BITS;
       TU_LOG2("Device suspended");
     }
 
@@ -428,6 +434,7 @@ bool hcd_init(uint8_t rhport)
     usb_hw->inte = USB_INTE_BUFF_STATUS_BITS      |
                    USB_INTE_HOST_CONN_DIS_BITS    |
                    USB_INTE_HOST_RESUME_BITS      |
+                   USB_INTE_BUS_RESET_BITS        |
                    USB_INTE_DEV_SUSPEND_BITS      |
                    USB_INTE_STALL_BITS            |
                    USB_INTE_TRANS_COMPLETE_BITS   |

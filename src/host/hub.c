@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -75,6 +75,14 @@ static char const* const _hub_feature_str[] =
 #endif
 
 //--------------------------------------------------------------------+
+// Connection Changes
+//--------------------------------------------------------------------+
+
+static bool connection_get_status_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
+static bool connection_clear_conn_change_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
+static bool connection_port_reset_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
+
+//--------------------------------------------------------------------+
 // HUB
 //--------------------------------------------------------------------+
 bool hub_port_clear_feature(uint8_t hub_addr, uint8_t hub_port, uint8_t feature, tuh_control_complete_cb_t complete_cb)
@@ -145,6 +153,11 @@ bool hub_port_get_status(uint8_t hub_addr, uint8_t hub_port, void* resp, tuh_con
   return true;
 }
 
+bool hub_port_get_status_from_addr(uint8_t hub_addr, uint8_t hub_port) {
+  hub_interface_t* p_hub = get_itf(hub_addr);
+  return hub_port_get_status(hub_addr, hub_port, &p_hub->port_status, connection_get_status_complete);
+}
+
 //--------------------------------------------------------------------+
 // CLASS-USBH API (don't require to verify parameters)
 //--------------------------------------------------------------------+
@@ -170,7 +183,7 @@ bool hub_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const *itf
 
   TU_ASSERT(TUSB_DESC_ENDPOINT  == desc_ep->bDescriptorType &&
             TUSB_XFER_INTERRUPT == desc_ep->bmAttributes.xfer, 0);
-  
+
   TU_ASSERT(usbh_edpt_open(rhport, dev_addr, desc_ep));
 
   hub_interface_t* p_hub = get_itf(dev_addr);
@@ -191,6 +204,7 @@ void hub_close(uint8_t dev_addr)
 
 bool hub_status_pipe_queue(uint8_t dev_addr)
 {
+  printf("pipe queue\n");
   hub_interface_t* hub_itf = get_itf(dev_addr);
   return usbh_edpt_xfer(dev_addr, hub_itf->ep_in, &hub_itf->status_change, 1);
 }
@@ -250,14 +264,15 @@ static bool config_port_power_complete (uint8_t dev_addr, tusb_control_request_t
 {
   TU_ASSERT(XFER_RESULT_SUCCESS == result);
    hub_interface_t* p_hub = get_itf(dev_addr);
-
+printf("Power complete\n");
   if (request->wIndex == p_hub->port_count)
   {
+    usbh_driver_set_config_complete(dev_addr, p_hub->itf_num);
+
     // All ports are power -> queue notification status endpoint and
     // complete the SET CONFIGURATION
-    TU_ASSERT( usbh_edpt_xfer(dev_addr, p_hub->ep_in, &p_hub->status_change, 1) );
+    // hub_status_pipe_queue(dev_addr);
 
-    usbh_driver_set_config_complete(dev_addr, p_hub->itf_num);
   }else
   {
     // power next port
@@ -268,14 +283,6 @@ static bool config_port_power_complete (uint8_t dev_addr, tusb_control_request_t
   return true;
 }
 
-//--------------------------------------------------------------------+
-// Connection Changes
-//--------------------------------------------------------------------+
-
-static bool connection_get_status_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
-static bool connection_clear_conn_change_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
-static bool connection_port_reset_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result);
-
 // callback as response of interrupt endpoint polling
 bool hub_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes)
 {
@@ -285,21 +292,35 @@ bool hub_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32
 
   hub_interface_t* p_hub = get_itf(dev_addr);
 
-  TU_LOG2("  Port Status Change = 0x%02X\r\n", p_hub->status_change);
+  TU_LOG2("!!!!!!!!!!!!!!!!  Port Status Change = 0x%02X\r\n", p_hub->status_change);
 
   // Hub ignore bit0 in status change
   for (uint8_t port=1; port <= p_hub->port_count; port++)
   {
     if ( tu_bit_test(p_hub->status_change, port) )
     {
-      hub_port_get_status(dev_addr, port, &p_hub->port_status, connection_get_status_complete);
+      // submit detach event
+      hcd_event_t event =
+      {
+        .dev_addr   = dev_addr,
+        .port = port,
+        .event_id   = HCD_EVENT_PORT_CHANGE,
+      };
+
+      hcd_event_handler(&event, false);
       break;
     }
   }
-
   // NOTE: next status transfer is queued by usbh.c after handling this request
 
   return true;
+}
+
+bool hub_set_mount(uint8_t dev_addr, uint8_t itf_num) {
+  hub_interface_t* p_hub = get_itf(dev_addr);
+  TU_ASSERT(itf_num == p_hub->itf_num);
+  TU_LOG2("Wait for change on the HUB %d\n", dev_addr);
+  hub_status_pipe_queue(dev_addr);
 }
 
 static bool connection_get_status_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
@@ -308,20 +329,20 @@ static bool connection_get_status_complete (uint8_t dev_addr, tusb_control_reque
 
   hub_interface_t* p_hub = get_itf(dev_addr);
   uint8_t const port_num = (uint8_t) request->wIndex;
-
+TU_LOG2("connection_get_status_complete\n");
   // Connection change
   if (p_hub->port_status.change.connection)
   {
     // Port is powered and enabled
     //TU_VERIFY(port_status.status_current.port_power && port_status.status_current.port_enable, );
-
+TU_LOG2("hub_port_clear_feature\n");
     // Acknowledge Port Connection Change
     hub_port_clear_feature(dev_addr, port_num, HUB_FEATURE_PORT_CONNECTION_CHANGE, connection_clear_conn_change_complete);
   }else
   {
     // Other changes are: Enable, Suspend, Over Current, Reset, L1 state
     // TODO clear change
-
+TU_LOG2("hub_status_pipe_queue\n");
     // prepare for next hub status
     // TODO continue with status_change, or maybe we can do it again with status
     hub_status_pipe_queue(dev_addr);
@@ -333,13 +354,14 @@ static bool connection_get_status_complete (uint8_t dev_addr, tusb_control_reque
 static bool connection_clear_conn_change_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
   TU_ASSERT(result == XFER_RESULT_SUCCESS);
-
+TU_LOG2("connection_clear_conn_change_complete\n");
   hub_interface_t* p_hub = get_itf(dev_addr);
   uint8_t const port_num = (uint8_t) request->wIndex;
 
   if ( p_hub->port_status.status.connection )
   {
     // Reset port if attach event
+    TU_LOG2("Reset port\n");
     hub_port_reset(dev_addr, port_num, connection_port_reset_complete);
   }else
   {
@@ -357,7 +379,6 @@ static bool connection_clear_conn_change_complete (uint8_t dev_addr, tusb_contro
 
     hcd_event_handler(&event, false);
   }
-
   return true;
 }
 

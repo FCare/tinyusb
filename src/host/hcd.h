@@ -55,6 +55,7 @@ typedef enum
 {
   HCD_EVENT_DEVICE_ATTACH,
   HCD_EVENT_DEVICE_REMOVE,
+  HCD_EVENT_PORT_CHANGE,
   HCD_EVENT_XFER_COMPLETE,
   HCD_EVENT_DEVICE_SET_ADDR,
 
@@ -69,6 +70,7 @@ typedef struct
   uint8_t rhport;
   uint8_t event_id;
   uint8_t dev_addr;
+  uint8_t port;
 
   union
   {
