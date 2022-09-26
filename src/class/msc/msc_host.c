@@ -754,11 +754,24 @@ static bool config_get_maxlun_complete (uint8_t dev_addr, tusb_control_request_t
   return true;
 }
 
-bool CheckCDCapabilities(uint8_t dev_addr) {
+bool CheckCDCapabilities(uint8_t dev_addr, bool *canBeLoaded, bool* canBeEjected) {
   uint8_t capabilties_buffer[256];
   msch_interface_t* p_msc = get_itf(dev_addr);
   msc_cbw_t const * cbw = &p_msc->cbw;
-  tuh_msc_mode_sense(dev_addr, cbw->lun, 0x2A, 0x0, 0x0, 128, &capabilties_buffer[0], NULL);
+
+  *canBeEjected = true;
+  *canBeLoaded = true;
+
+  if (tuh_msc_mode_sense(dev_addr, cbw->lun, 0x2A, 0x0, 0x0, 128, &capabilties_buffer[0], NULL)) {
+    uint16_t length = (capabilties_buffer[0]<<8)+capabilties_buffer[1];
+    uint16_t block_descriptor_length = (capabilties_buffer[6]<<8)+capabilties_buffer[7]+8;
+    if ((length < 128) && (block_descriptor_length<length)) {
+      if ((capabilties_buffer[block_descriptor_length + 6] >> 5) == 0) *canBeLoaded = false;
+      if ((capabilties_buffer[block_descriptor_length + 6] & 0x8) == 0) *canBeEjected = false;
+      return true;
+    }
+  }
+  return false;
 }
 
 bool checkForMedia(uint8_t dev_addr, uint8_t lun) {
@@ -768,10 +781,10 @@ bool checkForMedia(uint8_t dev_addr, uint8_t lun) {
 static bool config_test_unit_ready_complete(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw)
 {
     TU_LOG1("Test Unit ready Complete\n");
+  if (tuh_msc_ready_cb) tuh_msc_ready_cb(dev_addr, csw->status == MSC_CSW_STATUS_GOOD);
   if (csw->status == MSC_CSW_STATUS_GOOD)
   {
     // Unit is ready, read its capacity
-    if (tuh_msc_ready_cb) tuh_msc_ready_cb(dev_addr, true);
     tuh_msc_read_capacity(dev_addr, cbw->lun, (scsi_read_capacity10_resp_t*) ((void*) _msch_buffer), config_read_capacity_complete);
   }
   return true;

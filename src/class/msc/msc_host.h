@@ -121,7 +121,7 @@ bool tuh_msc_set_speed(uint8_t dev_addr, uint8_t lun, uint16_t read_speed, uint1
 
 bool checkForMedia(uint8_t dev_addr, uint8_t lun);
 
-bool CheckCDCapabilities(uint8_t dev_addr);
+bool CheckCDCapabilities(uint8_t dev_addr, bool *canBeLoaded, bool* canBeEjected);
 
 //------------- Application Callback -------------//
 
