@@ -1238,6 +1238,10 @@ bool usbh_edpt_release(uint8_t dev_addr, uint8_t ep_addr)
   return ret;
 }
 
+bool usbh_reset_endpoint_pid(uint8_t dev_addr, uint8_t ep_addr) {
+  return hcd_edpt_clear_stall(dev_addr, ep_addr);
+}
+
 // TODO has some duplication code with device, refactor later
 bool usbh_edpt_xfer(uint8_t dev_addr, uint8_t ep_addr, uint8_t * buffer, uint16_t total_bytes)
 {

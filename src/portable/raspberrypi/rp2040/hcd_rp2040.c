@@ -256,7 +256,6 @@ static void hcd_rp2040_irq(void)
     if (status & USB_INTS_STALL_BITS)
     {
         // We have rx'd a stall from the device
-        printf("Stall REC\n");
         handled |= USB_INTS_STALL_BITS;
         usb_hw_clear->sie_status = USB_SIE_STATUS_STALL_REC_BITS;
         hw_xfer_complete(get_epx_ep(), XFER_RESULT_STALLED);
@@ -543,11 +542,15 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
 {
     (void) rhport;
 
-    pico_trace("hcd_edpt_xfer dev_addr %d, ep_addr 0x%x, len %d\n", dev_addr, ep_addr, buflen);
+    pico_trace("hcd_edpt_xfer dev_addr %d, ep_addr 0x%x, len %d, buffer %x\n", dev_addr, ep_addr, buflen, buffer);
 
     uint8_t const ep_num = tu_edpt_number(ep_addr);
     tusb_dir_t const ep_dir = tu_edpt_dir(ep_addr);
 
+    if (ep_dir == TUSB_DIR_OUT){
+      for (int i = 0; i<buflen; i++) pico_trace("%x ",buffer[i]);
+      pico_trace("\n");
+    }
     // Get appropriate ep. Either EPX or interrupt endpoint
     struct hw_endpoint *ep = get_dev_ep(dev_addr, ep_addr);
     assert(ep);
@@ -645,10 +648,10 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
 bool hcd_edpt_clear_stall(uint8_t dev_addr, uint8_t ep_addr)
 {
-    (void) dev_addr;
-    (void) ep_addr;
-
-    panic("hcd_clear_stall");
+    struct hw_endpoint *ep = get_dev_ep(dev_addr, ep_addr);
+    assert(ep);
+    //Data PID has to be reset to 0
+    ep->next_pid = 0;
     return true;
 }
 

@@ -65,6 +65,8 @@ typedef struct
   void*   buffer;
   tuh_msc_complete_cb_t complete_cb;
   bool done;
+  bool clear_done;
+  uint retry;
 
   msc_cbw_t cbw;
   msc_csw_t csw;
@@ -131,6 +133,35 @@ static inline void cbw_init(msc_cbw_t *cbw, uint8_t lun)
 static bool setSync(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw) {
   msch_interface_t* p_msc = get_itf(dev_addr);
   p_msc->done = true;
+  return true;
+}
+
+static bool tuh_msc_clear_feature(uint8_t dev_addr, uint8_t ep_addr, uint8_t feature, tuh_control_complete_cb_t complete_cb)
+{
+  TU_LOG3("tuh_msc_clear_feature %x %x %x\n", dev_addr, ep_addr, feature);
+  tusb_control_request_t const request =
+  {
+    .bmRequestType_bit =
+    {
+      .recipient = TUSB_REQ_RCPT_ENDPOINT,
+      .type      = TUSB_REQ_TYPE_STANDARD,
+      .direction = TUSB_DIR_OUT
+    },
+    .bRequest = HOST_REQUEST_CLEAR_FEATURE,
+    .wValue   = feature,
+    .wIndex   = ep_addr, //genre 129
+    .wLength  = 0
+  };
+
+  TU_ASSERT( tuh_control_xfer(dev_addr, &request, NULL, complete_cb) );
+  return true;
+}
+
+static bool clear_feature_complete(uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
+{
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  p_msc->clear_done = true;
+  return true;
 }
 
 static bool tuh_msc_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, msc_cbw_t* resp_cbw, msc_csw_t *resp_csw)
@@ -148,13 +179,15 @@ static bool tuh_msc_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, 
   p_msc->stage = MSC_STAGE_CMD;
   p_msc->buffer = data;
   p_msc->complete_cb = setSync;
+  p_msc->retry = 4;
   p_msc->done = false;
 
   TU_ASSERT(usbh_edpt_xfer(dev_addr, p_msc->ep_out, (uint8_t*) &p_msc->cbw, sizeof(msc_cbw_t)));
   while(!p_msc->done) {tuh_task();};
+
   if (resp_cbw) memcpy(resp_cbw, &p_msc->cbw, sizeof(msc_cbw_t));
   if (resp_csw) memcpy(resp_csw, &p_msc->csw, sizeof(msc_csw_t));
-  return (resp_csw->status == 0);
+  return (resp_csw->status == MSC_CSW_STATUS_GOOD);
 }
 
 bool tuh_msc_scsi_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, tuh_msc_complete_cb_t complete_cb)
@@ -164,8 +197,8 @@ bool tuh_msc_scsi_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, tu
   msc_csw_t resp_csw;
 
   ret = tuh_msc_command(dev_addr, cbw, data, &resp_cbw, &resp_csw);
-  // if (resp_csw.status != 0x0)
-  //   ret |= tuh_msc_request_sense(dev_addr, cbw->lun, _msch_buffer, NULL);
+  if (resp_csw.status == MSC_CSW_STATUS_CHECK_CONDITION)
+    ret |= tuh_msc_request_sense(dev_addr, cbw->lun, _msch_buffer, NULL);
   if (complete_cb) complete_cb(dev_addr, &resp_cbw, &resp_csw);
   return ret;
 }
@@ -220,7 +253,7 @@ bool tuh_msc_test_unit_ready(uint8_t dev_addr, uint8_t lun, tuh_msc_complete_cb_
   msch_interface_t* p_msc = get_itf(dev_addr);
   TU_VERIFY(p_msc->configured);
 
-  TU_LOG1("Test Unit Read\n");
+  TU_LOG1("Test Unit Ready\n");
 
   msc_cbw_t cbw;
   cbw_init(&cbw, lun);
@@ -233,6 +266,34 @@ bool tuh_msc_test_unit_ready(uint8_t dev_addr, uint8_t lun, tuh_msc_complete_cb_
 
   return tuh_msc_scsi_command(dev_addr, &cbw, NULL, complete_cb);
 }
+
+bool tuh_msc_mode_sense(uint8_t dev_addr, uint8_t lun, uint8_t page_code, uint8_t dbd,  uint8_t llba, uint16_t alloc_length, uint8_t* response, tuh_msc_complete_cb_t complete_cb)
+{
+   msch_interface_t* p_msc = get_itf(dev_addr);
+   TU_VERIFY(p_msc->configured);
+
+  TU_LOG1("Mode sense\r\n");
+
+  msc_cbw_t cbw;
+  cbw_init(&cbw, lun);
+
+  cbw.total_bytes = alloc_length;
+  cbw.dir        = TUSB_DIR_IN_MASK;
+  cbw.cmd_len    = sizeof(scsi_mode_sense10_t);
+
+  scsi_mode_sense10_t const cmd_mode_sense =
+  {
+    .cmd_code     = SCSI_CMD_MODE_SENSE_10,
+    .dbd          = dbd,
+    .llba         = llba,
+    .page_code    = page_code,
+    .alloc_length = alloc_length,
+  };
+  memcpy(cbw.command, &cmd_mode_sense, cbw.cmd_len);
+
+  return tuh_msc_scsi_command(dev_addr, &cbw, response, complete_cb);
+}
+
 
 bool tuh_msc_request_sense(uint8_t dev_addr, uint8_t lun, void *resposne, tuh_msc_complete_cb_t complete_cb)
 {
@@ -255,7 +316,6 @@ bool tuh_msc_request_sense(uint8_t dev_addr, uint8_t lun, void *resposne, tuh_ms
   };
 
   memcpy(&cbw.command[0], &cmd_request_sense, cbw.cmd_len);
-
   ret = tuh_msc_command(dev_addr, &cbw, resposne, &resp_cbw, &resp_csw);
   if (complete_cb) complete_cb(dev_addr, &resp_cbw, &resp_csw);
   return ret;
@@ -520,10 +580,41 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
   msch_interface_t* p_msc = get_itf(dev_addr);
   msc_cbw_t const * cbw = &p_msc->cbw;
   msc_csw_t       * csw = &p_msc->csw;
-TU_LOG2("MSC Xfer stage %d %x %x %x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer, event == XFER_RESULT_SUCCESS);
+  TU_LOG2("MSC Xfer stage %d %x %x Transfert:%x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer, event);
   if (event != XFER_RESULT_SUCCESS) {
-    csw->status = MSC_CSW_STATUS_FAILED;
-    if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+      if (event == XFER_RESULT_STALLED) {
+        if (p_msc->retry != 0) {
+          p_msc->retry--;
+          TU_LOG3("Stalled on phase %d\n", p_msc->stage);
+          p_msc->clear_done = false;
+          TU_LOG3("Stalled: Clear endpoint halt\n");
+          tuh_msc_clear_feature(dev_addr, ep_addr ,HOST_ENDPOINT_HALT, clear_feature_complete);
+          while(!p_msc->clear_done) {tuh_task();};
+          uint8_t const ep_data = (cbw->dir & TUSB_DIR_IN_MASK) ? p_msc->ep_in : p_msc->ep_out;
+          usbh_reset_endpoint_pid(dev_addr, ep_data);
+          TU_LOG3("Stalled: Retry last transfer\n");
+          switch (p_msc->stage) {
+            case MSC_STAGE_DATA:
+            {
+              TU_LOG3("Restart the data stage\n");
+              TU_ASSERT(usbh_edpt_xfer(dev_addr, ep_data, p_msc->buffer, cbw->total_bytes));
+            }
+            break;
+            case MSC_STAGE_STATUS:
+            TU_LOG3("Restart the status stage\n");
+            TU_ASSERT(usbh_edpt_xfer(dev_addr, p_msc->ep_in, (uint8_t*) &p_msc->csw, sizeof(msc_csw_t)));
+            break;
+            default:
+            TU_LOG3("Stalled: unknow last transfert\n");
+          }
+        } else {
+          csw->status = MSC_CSW_STATUS_CHECK_CONDITION;
+          if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+        }
+      } else {
+        csw->status = MSC_CSW_STATUS_CHECK_CONDITION;
+        if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+      }
     return true;
   }
   switch (p_msc->stage)
@@ -555,8 +646,12 @@ TU_LOG2("MSC Xfer stage %d %x %x %x\n", p_msc->stage, cbw->total_bytes, p_msc->b
 
     case MSC_STAGE_STATUS:
       // SCSI op is complete
-      p_msc->stage = MSC_STAGE_IDLE;
-      if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+      {
+        csw->status = csw->status<<1;
+        TU_LOG2("SCSI status %x\n", csw->status);
+        p_msc->stage = MSC_STAGE_IDLE;
+        if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+      }
     break;
 
     // unknown state
@@ -659,6 +754,13 @@ static bool config_get_maxlun_complete (uint8_t dev_addr, tusb_control_request_t
   return true;
 }
 
+bool CheckCDCapabilities(uint8_t dev_addr) {
+  uint8_t capabilties_buffer[256];
+  msch_interface_t* p_msc = get_itf(dev_addr);
+  msc_cbw_t const * cbw = &p_msc->cbw;
+  tuh_msc_mode_sense(dev_addr, cbw->lun, 0x2A, 0x0, 0x0, 128, &capabilties_buffer[0], NULL);
+}
+
 bool checkForMedia(uint8_t dev_addr, uint8_t lun) {
   return tuh_msc_test_unit_ready(dev_addr, lun, config_test_unit_ready_complete);
 }
@@ -666,7 +768,7 @@ bool checkForMedia(uint8_t dev_addr, uint8_t lun) {
 static bool config_test_unit_ready_complete(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw)
 {
     TU_LOG1("Test Unit ready Complete\n");
-  if (csw->status == 0)
+  if (csw->status == MSC_CSW_STATUS_GOOD)
   {
     // Unit is ready, read its capacity
     if (tuh_msc_ready_cb) tuh_msc_ready_cb(dev_addr, true);
@@ -679,7 +781,7 @@ static bool config_request_sense_complete(uint8_t dev_addr, msc_cbw_t const* cbw
 {
   TU_LOG1("Sense complete %x\n", csw->status);
 
-  TU_ASSERT(csw->status == 0);
+  TU_ASSERT(csw->status == MSC_CSW_STATUS_GOOD);
   if (!tuh_msc_enumerated_cb) TU_ASSERT(tuh_msc_test_unit_ready(dev_addr, cbw->lun, config_test_unit_ready_complete));
   else tuh_msc_enumerated_cb(dev_addr);
   return true;
@@ -688,7 +790,7 @@ static bool config_request_sense_complete(uint8_t dev_addr, msc_cbw_t const* cbw
 static bool config_read_capacity_complete(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw)
 {
   TU_LOG1("Read Capacity complete %x\r\n", csw->status);
-  if (csw->status != 0) {
+  if (csw->status != MSC_CSW_STATUS_GOOD) {
     // device is not ready yet..
     return true;
   }

@@ -69,6 +69,9 @@ bool usbh_edpt_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_endpoint_t const
 // Submit a usb transfer
 bool usbh_edpt_xfer(uint8_t dev_addr, uint8_t ep_addr, uint8_t * buffer, uint16_t total_bytes);
 
+//Toggle the data id
+bool usbh_reset_endpoint_pid(uint8_t dev_addr, uint8_t ep_addr);
+
 // Claim an endpoint before submitting a transfer.
 // If caller does not make any transfer, it must release endpoint for others.
 bool usbh_edpt_claim(uint8_t dev_addr, uint8_t ep_addr);

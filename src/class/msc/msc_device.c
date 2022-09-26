@@ -185,7 +185,7 @@ uint8_t rdwr10_validate_cmd(msc_cbw_t const* cbw)
     else if ( 0 == block_count )
     {
       TU_LOG(MSC_DEBUG, "  SCSI case 4 Hi > Dn (READ10) or case 9 Ho > Dn (WRITE10) \r\n");
-      status =  MSC_CSW_STATUS_FAILED;
+      status =  MSC_CSW_STATUS_CHECK_CONDITION;
     }
     else if ( cbw->total_bytes / block_count == 0 )
     {
@@ -418,7 +418,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
       p_csw->signature    = MSC_CSW_SIGNATURE;
       p_csw->tag          = p_cbw->tag;
       p_csw->data_residue = 0;
-      p_csw->status       = MSC_CSW_STATUS_PASSED;
+      p_csw->status       = MSC_CSW_STATUS_GOOD;
 
       /*------------- Parse command and prepare DATA -------------*/
       p_msc->stage = MSC_STAGE_DATA;
@@ -430,7 +430,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
       {
         uint8_t const status = rdwr10_validate_cmd(p_cbw);
 
-        if ( status != MSC_CSW_STATUS_PASSED)
+        if ( status != MSC_CSW_STATUS_GOOD)
         {
           fail_scsi_op(rhport, p_msc, status);
         }else if ( p_cbw->total_bytes )
@@ -458,7 +458,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
           if (p_cbw->total_bytes > sizeof(_mscd_buf))
           {
             TU_LOG(MSC_DEBUG, "  SCSI reject non READ10/WRITE10 with large data\r\n");
-            fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+            fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
           }else
           {
             // Didn't check for case 9 (Ho > Dn), which requires examining scsi command first
@@ -480,7 +480,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
           {
             // unsupported command
             TU_LOG(MSC_DEBUG, "  SCSI unsupported or failed command\r\n");
-            fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+            fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
           }
           else if (resplen == 0)
           {
@@ -488,7 +488,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
             {
               // 6.7 The 13 Cases: case 4 (Hi > Dn)
               // TU_LOG(MSC_DEBUG, "  SCSI case 4 (Hi > Dn): %lu\r\n", p_cbw->total_bytes);
-              fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+              fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
             }else
             {
               // case 1 Hn = Dn: all good
@@ -501,7 +501,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
             {
               // 6.7 The 13 Cases: case 2 (Hn < Di)
               // TU_LOG(MSC_DEBUG, "  SCSI case 2 (Hn < Di): %lu\r\n", p_cbw->total_bytes);
-              fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+              fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
             }else
             {
               // cannot return more than host expect
@@ -547,7 +547,7 @@ bool mscd_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t event, uint32_t
           {
             // unsupported command
             TU_LOG(MSC_DEBUG, "  SCSI unsupported command\r\n");
-            fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+            fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
           }else
           {
             // TODO haven't implement this scenario any further yet
@@ -850,7 +850,7 @@ static void proc_read10_cmd(uint8_t rhport, mscd_interface_t* p_msc)
     // set sense
     set_sense_medium_not_present(p_cbw->lun);
 
-    fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+    fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
   }
   else if ( nbytes == 0 )
   {
@@ -878,7 +878,7 @@ static void proc_write10_cmd(uint8_t rhport, mscd_interface_t* p_msc)
     // Not writable, complete this SCSI op with error
     // Sense = Write protected
     tud_msc_set_sense(p_cbw->lun, SCSI_SENSE_DATA_PROTECT, 0x27, 0x00);
-    fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+    fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
     return;
   }
 
@@ -915,7 +915,7 @@ static void proc_write10_new_data(uint8_t rhport, mscd_interface_t* p_msc, uint3
     // Set sense
     set_sense_medium_not_present(p_cbw->lun);
 
-    fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_FAILED);
+    fail_scsi_op(rhport, p_msc, MSC_CSW_STATUS_CHECK_CONDITION);
   }else
   {
     // Application consume less than what we got (including zero)

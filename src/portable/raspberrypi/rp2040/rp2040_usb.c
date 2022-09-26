@@ -116,7 +116,6 @@ static uint32_t prepare_ep_buffer(struct hw_endpoint *ep, uint8_t buf_id)
 {
   uint16_t const buflen = tu_min16(ep->remaining_len, ep->wMaxPacketSize);
   ep->remaining_len = (uint16_t)(ep->remaining_len - buflen);
-  // printf("Remaining %d\n", ep->remaining_len);
 
   uint32_t buf_ctrl = buflen | USB_BUF_CTRL_AVAIL;
 
@@ -179,7 +178,7 @@ static void _hw_endpoint_start_next_buffer(struct hw_endpoint *ep)
 
   *ep->endpoint_control = ep_ctrl;
 
-  TU_LOG(3, "  Prepare BufCtrl: [0] = 0x%04u  [1] = 0x%04x\r\n", tu_u32_low16(buf_ctrl), tu_u32_high16(buf_ctrl));
+  TU_LOG(3, "  Prepare EpCtrl %x BufCtrl: [0] = 0x%04u  [1] = 0x%04x\r\n", ep_ctrl, tu_u32_low16(buf_ctrl), tu_u32_high16(buf_ctrl));
 
   // Finally, write to buffer_control which will trigger the transfer
   // the next time the controller polls this dpram address
@@ -315,6 +314,9 @@ bool hw_endpoint_xfer_continue(struct hw_endpoint *ep)
   {
     pico_trace("Completed transfer of %d bytes on ep %d %s\n",
                ep->xferred_len, tu_edpt_number(ep->ep_addr), ep_dir_string[tu_edpt_dir(ep->ep_addr)]);
+     uint8_t* allBuf = ep->user_buf - ep->xferred_len;
+     for (int i = 0; i<ep->xferred_len; i++) TU_LOG3("%x ",allBuf[i]);
+     TU_LOG3("\n");
     // Notify caller we are done so it can notify the tinyusb stack
     _hw_endpoint_lock_update(ep, -1);
     return true;

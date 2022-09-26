@@ -41,6 +41,15 @@
 #define CFG_TUH_MSC_MAXLUN  4
 #endif
 
+
+enum {
+  HOST_REQUEST_CLEAR_FEATURE   = 1  ,
+};
+
+enum{
+  HOST_ENDPOINT_HALT         = 0,
+};
+
 typedef bool (*tuh_msc_complete_cb_t)(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw);
 
 //--------------------------------------------------------------------+
@@ -80,6 +89,8 @@ bool tuh_msc_test_unit_ready(uint8_t dev_addr, uint8_t lun, tuh_msc_complete_cb_
 // Complete callback is invoked when SCSI op is complete.
 bool tuh_msc_request_sense(uint8_t dev_addr, uint8_t lun, void *resposne, tuh_msc_complete_cb_t complete_cb);
 
+bool tuh_msc_mode_sense(uint8_t dev_addr, uint8_t lun, uint8_t page_code, uint8_t dbd,  uint8_t llba, uint16_t alloc_length, uint8_t* response, tuh_msc_complete_cb_t complete_cb);
+
 // Perform SCSI Read 10 command. Read n blocks starting from LBA to buffer
 // Complete callback is invoked when SCSI op is complete.
 bool  tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb);
@@ -109,6 +120,8 @@ bool tuh_msc_read_header(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t 
 bool tuh_msc_set_speed(uint8_t dev_addr, uint8_t lun, uint16_t read_speed, uint16_t write_speed, tuh_msc_complete_cb_t complete_cb);
 
 bool checkForMedia(uint8_t dev_addr, uint8_t lun);
+
+bool CheckCDCapabilities(uint8_t dev_addr);
 
 //------------- Application Callback -------------//
 

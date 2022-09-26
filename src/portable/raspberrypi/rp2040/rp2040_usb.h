@@ -25,11 +25,11 @@ typedef struct hw_endpoint
 {
     // Is this a valid struct
     bool configured;
-    
+
     // Transfer direction (i.e. IN is rx for host but tx for device)
     // allows us to common up transfer functions
     bool rx;
-    
+
     uint8_t ep_addr;
     uint8_t next_pid;
 
@@ -55,7 +55,9 @@ typedef struct hw_endpoint
 
     // Interrupt, bulk, etc
     uint8_t transfer_type;
-    
+
+    bool clear;
+
 #if CFG_TUH_ENABLED
     // Only needed for host
     uint8_t dev_addr;

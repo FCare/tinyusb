@@ -73,9 +73,18 @@ typedef enum
 /// successfully. A non-zero value shall indicate a failure during command execution according to the following
 typedef enum
 {
-  MSC_CSW_STATUS_PASSED = 0 , ///< MSC_CSW_STATUS_PASSED
-  MSC_CSW_STATUS_FAILED     , ///< MSC_CSW_STATUS_FAILED
-  MSC_CSW_STATUS_PHASE_ERROR  ///< MSC_CSW_STATUS_PHASE_ERROR
+  MSC_CSW_STATUS_GOOD            = 0x00,
+  MSC_CSW_STATUS_CHECK_CONDITION = 0x02,
+  MSC_CSW_STATUS_CONDITION_MET   = 0x04,
+  MSC_CSW_STATUS_BUSY           = 0x08,
+  MSC_CSW_STATUS_INTERMEDIATE    = 0x10,
+  MSC_CSW_STATUS_INTER_COND_MET  = 0x14,
+  MSC_CSW_STATUS_RESA_CONFLICT   = 0x18,
+  MSC_CSW_STATUS_TASK_SET_FULL   = 0x28,
+  MSC_CSW_STATUS_ACA_ACTIVE      = 0x30,
+  MSC_CSW_STATUS_TASK_ABORTED    = 0x40,
+  MSC_CSW_STATUS_PHASE_ERROR           ,
+  MSC_CSW_STALLED
 }msc_csw_status_t;
 
 /// Command Block Wrapper
@@ -114,6 +123,7 @@ typedef enum
   SCSI_CMD_INQUIRY                      = 0x12, ///< The SCSI Inquiry command is used to obtain basic information from a target device.
   SCSI_CMD_MODE_SELECT_6                = 0x15, ///<  provides a means for the application client to specify medium, logical unit, or peripheral device parameters to the device server. Device servers that implement the MODE SELECT(6) command shall also implement the MODE SENSE(6) command. Application clients should issue MODE SENSE(6) prior to each MODE SELECT(6) to determine supported mode pages, page lengths, and other parameters.
   SCSI_CMD_MODE_SENSE_6                 = 0x1A, ///< provides a means for a device server to report parameters to an application client. It is a complementary command to the MODE SELECT(6) command. Device servers that implement the MODE SENSE(6) command shall also implement the MODE SELECT(6) command.
+  SCSI_CMD_MODE_SENSE_10                = 0x5A,
   SCSI_CMD_START_STOP_UNIT              = 0x1B,
   SCSI_CMD_PREVENT_ALLOW_MEDIUM_REMOVAL = 0x1E,
   SCSI_CMD_READ_CAPACITY_10             = 0x25, ///< The SCSI Read Capacity command is used to obtain data capacity information from a target device.
@@ -361,6 +371,48 @@ typedef struct {
 } scsi_read_capacity10_resp_t;
 
 TU_VERIFY_STATIC(sizeof(scsi_read_capacity10_resp_t) == 8, "size is not correct");
+
+/// SCSI Mode Sense 10 Command: Mode Sense
+typedef struct TU_ATTR_PACKED
+{
+  uint8_t  cmd_code      ; ///< SCSI OpCode for \ref SCSI_CMD_MODE_SENSE_10
+
+  uint8_t             : 3; //LSB
+  uint8_t dbd         : 1;
+  uint8_t llba        : 1;
+  uint8_t             : 3;
+
+  uint8_t page_code   : 6; //LSB
+  uint8_t pc          : 2;
+
+  uint8_t subpage_code   ;
+
+  uint8_t TU_RESERVED    ;
+  uint8_t TU_RESERVED    ;
+  uint8_t TU_RESERVED    ;
+
+  uint16_t alloc_length  ;
+
+  uint8_t  control       ;
+} scsi_mode_sense10_t;
+
+TU_VERIFY_STATIC(sizeof(scsi_mode_sense10_t) == 10, "size is not correct");
+
+/// SCSI Read Capacity 10 Response Data
+typedef struct {
+  uint16_t total_length            ;
+  uint8_t  medium_type             ;
+  uint8_t  device_specific         ;
+
+  uint8_t  llba                 :1 ;
+  uint8_t                       :7 ;
+
+  uint8_t TU_RESERVED              ;
+
+  uint16_t block_descriptor_length ;
+} scsi_mode_sense10_resp_t;
+
+TU_VERIFY_STATIC(sizeof(scsi_mode_sense10_resp_t) == 8, "size is not correct");
 
 /// SCSI Read 10 Command
 typedef struct TU_ATTR_PACKED
