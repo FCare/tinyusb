@@ -218,7 +218,7 @@ CFG_TUSB_MEM_SECTION usbh_device_t _usbh_devices[CFG_TUH_DEVICE_MAX + CFG_TUH_HU
 // role device/host is used by OS NONE for mutex (disable usb isr)
 OSAL_QUEUE_DEF(usbh_int_set, _usbh_qdef, CFG_TUH_TASK_QUEUE_SZ, hcd_event_t);
 static osal_queue_t _usbh_q;
-
+static bool osal_interrupt = false;
 CFG_TUSB_MEM_SECTION CFG_TUSB_MEM_ALIGN static uint8_t _usbh_ctrl_buf[CFG_TUH_ENUMERATION_BUFSIZE];
 
 //------------- Helper Function -------------//
@@ -239,6 +239,11 @@ extern bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result
 
 static bool enum_request_set_addr();
 static bool enum_request_set_addr_from_event(hcd_event_t* event);
+
+
+static bool osal_queue_interrupt() {
+  return osal_interrupt;
+}
 
 //--------------------------------------------------------------------+
 // PUBLIC API (Parameter Verification is required)
@@ -272,7 +277,7 @@ void osal_task_delay(uint32_t msec)
   (void) msec;
 
   const uint32_t start = hcd_frame_number(TUH_OPT_RHPORT);
-  while ( ( hcd_frame_number(TUH_OPT_RHPORT) - start ) < msec ) {handle_osal_queue();}
+  while ( ( hcd_frame_number(TUH_OPT_RHPORT) - start ) < msec ) {if (osal_queue_interrupt() handle_osal_queue();}
 }
 #endif
 
@@ -414,6 +419,7 @@ bool tuh_init(uint8_t rhport)
   //------------- Enumeration & Reporter Task init -------------//
   _usbh_q = osal_queue_create( &_usbh_qdef );
   TU_ASSERT(_usbh_q != NULL);
+  osal_interrupt = false;
 
   //------------- Semaphore, Mutex for Control Pipe -------------//
   for(uint8_t i=0; i<TU_ARRAY_SIZE(_usbh_devices); i++)
@@ -466,7 +472,11 @@ static void handle_osal_queue() {
   while (1)
   {
     hcd_event_t event;
-    if ( !osal_queue_receive(_usbh_q, &event) ) return;
+
+    if ( !osal_queue_receive(_usbh_q, &event) ) {
+      osal_interrupt = false;
+      return;
+    }
 
     switch (event.event_id)
     {
@@ -596,6 +606,8 @@ void hcd_event_handler(hcd_event_t const* event, bool in_isr)
 {
   switch (event->event_id)
   {
+    case HCD_EVENT_DEVICE_REMOVE:
+      osal_interrupt = true;
     default:
       osal_queue_send(_usbh_q, event, in_isr);
     break;
