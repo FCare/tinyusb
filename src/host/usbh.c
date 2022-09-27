@@ -529,12 +529,6 @@ static void handle_osal_queue() {
       case USBH_EVENT_FUNC_CALL:
         if ( event.func_call.func ) event.func_call.func(event.func_call.param);
       break;
-
-      case HCD_EVENT_DEVICE_SET_ADDR:
-        TU_LOG2("USBH DEVICE SET ADDRESS\r\n");
-        enum_request_set_addr_from_event(&event);
-      break;
-
       default: break;
     }
   }
@@ -651,21 +645,6 @@ void hcd_event_device_remove(uint8_t hostid, bool in_isr)
 TU_LOG2("!!!!DETACh detected!!!\n");
   event.connection.hub_addr = 0;
   event.connection.hub_port = 0;
-
-  hcd_event_handler(&event, in_isr);
-}
-
-void hcd_event_device_set_addr(uint8_t hostid, bool in_isr) {
-  hcd_event_t event =
-  {
-    .rhport   = hostid,
-    .event_id = HCD_EVENT_DEVICE_SET_ADDR
-  };
-
-  event.connection.hub_addr = 0;
-  event.connection.hub_port = 0;
-
-TU_LOG2("!!!!Set Addr detected!!!\n");
 
   hcd_event_handler(&event, in_isr);
 }
@@ -921,7 +900,7 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
     // connected directly to roothub
     hcd_port_reset( _dev0.rhport ); // reset port after 8 byte descriptor
     osal_task_delay(RESET_DELAY);
-    hcd_event_device_set_addr(_dev0.rhport, false);
+    enum_request_set_addr();
   }
 #if CFG_TUH_HUB
   else

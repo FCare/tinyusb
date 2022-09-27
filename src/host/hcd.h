@@ -56,7 +56,6 @@ typedef enum
   HCD_EVENT_DEVICE_ATTACH,
   HCD_EVENT_DEVICE_REMOVE,
   HCD_EVENT_XFER_COMPLETE,
-  HCD_EVENT_DEVICE_SET_ADDR,
 
   // Not an HCD event, just a convenient way to defer ISR function
   USBH_EVENT_FUNC_CALL,
