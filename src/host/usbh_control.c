@@ -45,6 +45,8 @@ typedef struct
   uint8_t stage;
   uint8_t* buffer;
   tuh_control_complete_cb_t complete_cb;
+  bool done;
+  xfer_result_t result;
 } usbh_control_xfer_t;
 
 static usbh_control_xfer_t _ctrl_xfer;
@@ -56,6 +58,13 @@ static usbh_control_xfer_t _ctrl_xfer;
 // MACRO TYPEDEF CONSTANT ENUM DECLARATION
 //--------------------------------------------------------------------+
 
+static bool ctrlSync (uint8_t daddr, tusb_control_request_t const * request, xfer_result_t result)
+{
+  _ctrl_xfer.result = result;
+  _ctrl_xfer.done = true;
+  return true;
+}
+
 bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
 {
   // TODO need to claim the endpoint first
@@ -64,7 +73,8 @@ bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, 
   _ctrl_xfer.request     = (*request);
   _ctrl_xfer.buffer      = buffer;
   _ctrl_xfer.stage       = STAGE_SETUP;
-  _ctrl_xfer.complete_cb = complete_cb;
+  _ctrl_xfer.complete_cb = ctrlSync;
+  _ctrl_xfer.done        = false;
 
   TU_LOG2("Control Setup (addr = %u): ", dev_addr);
   TU_LOG2_VAR(request);
@@ -72,7 +82,8 @@ bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, 
 
   // Send setup packet
   TU_ASSERT( hcd_setup_send(rhport, dev_addr, (uint8_t const*) &_ctrl_xfer.request) );
-
+  while(!_ctrl_xfer.done)  {tuh_task();};
+  if (complete_cb) complete_cb(dev_addr, (uint8_t const*) &_ctrl_xfer.request, _ctrl_xfer.result);
   return true;
 }
 
