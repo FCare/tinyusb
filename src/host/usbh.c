@@ -879,12 +879,13 @@ static bool enum_request_addr0_device_desc(void)
   return true;
 }
 
+#if CFG_TUH_HUB
 static bool hub_port_reset_complete(uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
     TU_ASSERT( hub_port_get_status(_dev0.hub_addr, _dev0.hub_port, _usbh_ctrl_buf, enum_hub_get_status1_complete) );
     return true;
 }
-
+#endif
 // After Get Device Descriptor of Address 0
 static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
