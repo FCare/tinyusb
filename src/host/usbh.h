@@ -54,6 +54,7 @@ bool tuh_inited(void);
 
 // Task function should be called in main/rtos loop
 void tuh_task(void);
+void tuh_task_minimum(void);
 
 // Interrupt handler, name alias to HCD
 extern void hcd_int_handler(uint8_t rhport);

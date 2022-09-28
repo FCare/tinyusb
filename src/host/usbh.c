@@ -238,13 +238,26 @@ static bool usbh_edpt_control_open(uint8_t dev_addr, uint8_t max_packet_size);
 extern bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes);
 
 static bool enum_request_set_addr();
-static bool enum_request_set_addr_from_event(hcd_event_t* event);
 
 
 static bool osal_queue_interrupt() {
   return osal_interrupt;
 }
 
+
+static bool tuh_control_xfer_safe(uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
+{
+  if (dev_addr != 0) {
+    usbh_device_t* dev = get_device(dev_addr);
+    if (dev->connected==1) {
+      if (dev->state == TUSB_DEVICE_STATE_UNPLUG) {
+        printf("Dev addr %d has been deconnected - abort\n", dev_addr);
+        return true;
+      }
+    }
+  }
+  return tuh_control_xfer(dev_addr, request, buffer, complete_cb);
+}
 //--------------------------------------------------------------------+
 // PUBLIC API (Parameter Verification is required)
 //--------------------------------------------------------------------+
@@ -277,7 +290,7 @@ void osal_task_delay(uint32_t msec)
   (void) msec;
 
   const uint32_t start = hcd_frame_number(TUH_OPT_RHPORT);
-  while ( ( hcd_frame_number(TUH_OPT_RHPORT) - start ) < msec ) {if (osal_queue_interrupt() handle_osal_queue();}
+  while ( ( hcd_frame_number(TUH_OPT_RHPORT) - start ) < msec ) {}
 }
 #endif
 
@@ -301,7 +314,7 @@ bool tuh_descriptor_get(uint8_t daddr, uint8_t type, uint8_t index, void* buffer
     .wLength  = tu_htole16(len)
   };
 
-  TU_ASSERT( tuh_control_xfer(daddr, &request, buffer, complete_cb) );
+  TU_ASSERT( tuh_control_xfer_safe(daddr, &request, buffer, complete_cb) );
 
   return true;
 }
@@ -333,7 +346,7 @@ bool tuh_descriptor_string_get(uint8_t daddr, uint16_t language_id, uint8_t inde
     .wLength  = tu_htole16(len)
   };
 
-  TU_ASSERT( tuh_control_xfer(daddr, &request, buffer, complete_cb) );
+  TU_ASSERT( tuh_control_xfer_safe(daddr, &request, buffer, complete_cb) );
   return true;
 }
 
@@ -485,6 +498,7 @@ static void handle_osal_queue() {
         // one device before enumerating another one.
         TU_LOG2("USBH DEVICE ATTACH\r\n");
         enum_new_device(&event);
+        printf("USBH DEVICE ATTACH done\n");
       break;
 
       case HCD_EVENT_DEVICE_REMOVE:
@@ -551,6 +565,13 @@ void tuh_task(void)
   // Loop until there is no more events in the queue
   handle_osal_queue();
 
+}
+
+void tuh_task_minimum(void)
+{
+  if ( !tusb_inited() ) return;
+
+  if (osal_queue_interrupt()) handle_osal_queue();
 }
 
 //--------------------------------------------------------------------+
@@ -648,17 +669,27 @@ void hcd_event_device_attach(uint8_t rhport, bool in_isr)
 
 void hcd_event_device_remove(uint8_t hostid, bool in_isr)
 {
-  hcd_event_t event =
-  {
-    .rhport   = hostid,
-    .event_id = HCD_EVENT_DEVICE_REMOVE
-  };
+//   hcd_event_t event =
+//   {
+//     .rhport   = hostid,
+//     .event_id = HCD_EVENT_DEVICE_REMOVE
+//   };
+//
+TU_LOG2("!!!!DETACh detected %d!!!\n", hostid);
+//   event.connection.hub_addr = 0;
+//   event.connection.hub_port = 0;
+//
+//   hcd_event_handler(&event, in_isr);
+process_device_unplugged(hostid, 0, 0);
 
-TU_LOG2("!!!!DETACh detected!!!\n");
-  event.connection.hub_addr = 0;
-  event.connection.hub_port = 0;
-
-  hcd_event_handler(&event, in_isr);
+#if CFG_TUH_HUB
+// // TODO remove
+// if ( event.connection.hub_addr != 0)
+// {
+//   // done with hub, waiting for next data on status pipe
+  // (void) hub_status_pipe_queue( event.connection.hub_addr );
+// }
+#endif
 }
 
 
@@ -672,6 +703,8 @@ void process_device_unplugged(uint8_t rhport, uint8_t hub_addr, uint8_t hub_port
   {
     usbh_device_t* dev = &_usbh_devices[dev_id];
     uint8_t const dev_addr = dev_id+1;
+
+printf("Looking to unplug device %d %x %x\n", dev_id, dev->state, dev->rhport);
 
     // TODO Hub multiple level
     if (dev->rhport == rhport   &&
@@ -688,7 +721,7 @@ void process_device_unplugged(uint8_t rhport, uint8_t hub_addr, uint8_t hub_port
         TU_LOG2("%s close\r\n", usbh_class_drivers[drv_id].name);
         usbh_class_drivers[drv_id].close(dev_addr);
       }
-
+printf("Closing dev_addr %x\n", dev_addr);
       hcd_device_close(rhport, dev_addr);
 
       // release all endpoints associated with the device
@@ -713,7 +746,11 @@ static uint8_t get_new_address(bool is_hub)
   for (uint8_t i=0; i < count; i++)
   {
     uint8_t const addr = start + i;
-    if (get_device(addr)->state == TUSB_DEVICE_STATE_UNPLUG) return addr;
+    if (get_device(addr)->state == TUSB_DEVICE_STATE_UNPLUG) {
+      printf("device %d is plugged\n", addr);
+      get_device(addr)->state = TUSB_DEVICE_STATE_PLUGGED;
+      return addr;
+    }
   }
   return ADDR_INVALID;
 }
@@ -742,6 +779,7 @@ void usbh_driver_set_config_complete(uint8_t dev_addr, uint8_t itf_num)
     // Invoke callback if available
     if (tuh_mount_cb) tuh_mount_cb(dev_addr);
   }
+  printf("usbh_driver_set_config_complete done\n");
 }
 
 //--------------------------------------------------------------------+
@@ -769,6 +807,7 @@ static bool enum_hub_clear_reset0_complete(uint8_t dev_addr, tusb_control_reques
   (void) dev_addr; (void) request;
   TU_ASSERT(XFER_RESULT_SUCCESS == result);
   enum_request_addr0_device_desc();
+  printf("enum_hub_clear_reset0_complete done\n");
   return true;
 }
 
@@ -778,6 +817,7 @@ static bool enum_hub_clear_reset1_complete(uint8_t dev_addr, tusb_control_reques
   TU_ASSERT(XFER_RESULT_SUCCESS == result);
 
   enum_request_set_addr();
+  printf("enum_hub_clear_reset1_complete done\n");
 
   // done with hub, waiting for next data on status pipe
   (void) hub_status_pipe_queue( _dev0.hub_addr );
@@ -798,7 +838,7 @@ static bool enum_hub_get_status1_complete(uint8_t dev_addr, tusb_control_request
   {
     TU_ASSERT( hub_port_clear_feature(_dev0.hub_addr, _dev0.hub_port, HUB_FEATURE_PORT_RESET_CHANGE, enum_hub_clear_reset1_complete) );
   }
-
+  printf("enum_hub_get_status1_complete done\n");
   return true;
 }
 
@@ -823,6 +863,7 @@ static bool enum_hub_get_status0_complete(uint8_t dev_addr, tusb_control_request
   if (port_status.change.reset)
   {
     hub_port_clear_feature(_dev0.hub_addr, _dev0.hub_port, HUB_FEATURE_PORT_RESET_CHANGE, enum_hub_clear_reset0_complete);
+    printf("enum_hub_get_status0_complete done\n");
   }
 
   return true;
@@ -852,6 +893,7 @@ static bool enum_new_device(hcd_event_t* event)
     _dev0.speed = hcd_port_speed_get(_dev0.rhport );
     TU_LOG2("%s Speed\r\n", tusb_speed_str[_dev0.speed]);
     enum_request_addr0_device_desc();
+    printf("enum_new_device done\n");
   }
 #if CFG_TUH_HUB
   //------------- connected/disconnected via hub -------------//
@@ -860,6 +902,7 @@ static bool enum_new_device(hcd_event_t* event)
     // wait until device is stable
     osal_task_delay(RESET_DELAY);
     TU_ASSERT( hub_port_get_status(_dev0.hub_addr, _dev0.hub_port, _usbh_ctrl_buf, enum_hub_get_status0_complete) );
+    printf("enum_new_device hub done\n");
   }
 #endif // CFG_TUH_HUB
 
@@ -876,6 +919,7 @@ static bool enum_request_addr0_device_desc(void)
   TU_LOG2("Get 40 byte of Device Descriptor\r\n");
 
   TU_ASSERT(tuh_descriptor_device_get(addr0, _usbh_ctrl_buf, 0x40, enum_get_addr0_device_desc_complete));
+  printf("enum_request_addr0_device_desc done\n");
   return true;
 }
 
@@ -883,6 +927,7 @@ static bool enum_request_addr0_device_desc(void)
 static bool hub_port_reset_complete(uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
     TU_ASSERT( hub_port_get_status(_dev0.hub_addr, _dev0.hub_port, _usbh_ctrl_buf, enum_hub_get_status1_complete) );
+    printf("hub_port_reset_complete done\n");
     return true;
 }
 #endif
@@ -894,6 +939,7 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
 
   if (XFER_RESULT_SUCCESS != result)
   {
+    printf("Got an issue here\n");
 #if CFG_TUH_HUB
     // TODO remove, waiting for next data on status pipe
     if (_dev0.hub_addr != 0) hub_status_pipe_queue(_dev0.hub_addr);
@@ -911,6 +957,7 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
   if (_dev0.hub_addr == 0)
   {
     // connected directly to roothub
+    printf("Should reset here\n");
     hcd_port_reset( _dev0.rhport ); // reset port after 8 byte descriptor
     osal_task_delay(RESET_DELAY);
     enum_request_set_addr();
@@ -919,26 +966,13 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
   else
   {
     // after RESET_DELAY the hub_port_reset() already complete
+    printf("Should reset hub port\n");
     TU_ASSERT( hub_port_reset(_dev0.hub_addr, _dev0.hub_port, hub_port_reset_complete) );
     osal_task_delay(RESET_DELAY);
   }
 #endif
-
+printf("enum_get_addr0_device_desc_complete done\n");
   return true;
-}
-
-static bool enum_request_set_addr_from_event(hcd_event_t* event)
-{
-
-  _dev0.rhport   = event->rhport; // TODO refractor integrate to device_pool
-  _dev0.hub_addr = event->connection.hub_addr;
-  _dev0.hub_port = event->connection.hub_port;
-
-  if (!hcd_port_connect_status(_dev0.rhport) ) {
-    TU_LOG2("Device is not connected anymore - do not ask for set adress\n");
-    return false;
-  }
-  else return enum_request_set_addr();
 }
 
 static bool enum_request_set_addr()
@@ -953,6 +987,9 @@ static bool enum_request_set_addr()
   TU_LOG2("Set Address = %d\r\n", new_addr);
 
   usbh_device_t* new_dev = get_device(new_addr);
+
+  memset(new_dev->itf2drv, DRVID_INVALID, sizeof(new_dev->itf2drv)); // invalid mapping
+  memset(new_dev->ep2drv , DRVID_INVALID, sizeof(new_dev->ep2drv )); // invalid mapping
 
   new_dev->rhport    = _dev0.rhport;
   new_dev->hub_addr  = _dev0.hub_addr;
@@ -976,7 +1013,7 @@ static bool enum_request_set_addr()
   };
 
   TU_ASSERT( tuh_control_xfer(addr0, &new_request, NULL, enum_set_address_complete) );
-
+printf("enum_request_set_addr done\n");
   return true;
 }
 
@@ -1001,6 +1038,7 @@ static bool enum_set_address_complete(uint8_t dev_addr, tusb_control_request_t c
   TU_LOG2("Get Device Descriptor\r\n");
 
   TU_ASSERT(tuh_descriptor_device_get(new_addr, _usbh_ctrl_buf, sizeof(tusb_desc_device_t), enum_get_device_desc_complete));
+  printf("enum_set_address_complete done\n");
   return true;
 }
 
@@ -1024,6 +1062,7 @@ static bool enum_get_device_desc_complete(uint8_t dev_addr, tusb_control_request
   uint8_t const config_idx = CONFIG_NUM - 1;
   TU_LOG2("Get Configuration[0] Descriptor (9 bytes)\r\n");
   TU_ASSERT( tuh_descriptor_configuration_get(dev_addr, config_idx, _usbh_ctrl_buf, 9, enum_get_9byte_config_desc_complete) );
+  printf("enum_get_device_desc_complete done\n");
   return true;
 }
 
@@ -1042,8 +1081,9 @@ static bool enum_get_9byte_config_desc_complete(uint8_t dev_addr, tusb_control_r
 
   // Get full configuration descriptor
   uint8_t const config_idx = CONFIG_NUM - 1;
-  TU_LOG2("Get Configuration[0] Descriptor\r\n");
+  TU_LOG2("Get Configuration[0] Descriptor %d\r\n", dev_addr);
   TU_ASSERT( tuh_descriptor_configuration_get(dev_addr, config_idx, _usbh_ctrl_buf, total_len, enum_get_config_desc_complete) );
+  printf("enum_get_9byte_config_desc_complete done\n");
   return true;
 }
 
@@ -1057,6 +1097,7 @@ static bool enum_get_config_desc_complete(uint8_t dev_addr, tusb_control_request
   TU_ASSERT( parse_configuration_descriptor(dev_addr, (tusb_desc_configuration_t*) _usbh_ctrl_buf) );
 
   TU_ASSERT( tuh_configuration_set(dev_addr, CONFIG_NUM, enum_set_config_complete) );
+  printf("enum_get_config_desc_complete done\n");
   return true;
 }
 
@@ -1076,6 +1117,8 @@ static bool enum_set_config_complete(uint8_t dev_addr, tusb_control_request_t co
   // TODO use separated API instead of using DRVID_INVALID
   usbh_driver_set_config_complete(dev_addr, DRVID_INVALID);
 
+  printf("enum_set_config_complete done\n");
+
   return true;
 }
 
@@ -1085,7 +1128,7 @@ static bool parse_configuration_descriptor(uint8_t dev_addr, tusb_desc_configura
 
   uint8_t const* desc_end = ((uint8_t const*) desc_cfg) + tu_le16toh(desc_cfg->wTotalLength);
   uint8_t const* p_desc   = tu_desc_next(desc_cfg);
-
+printf("Parse configuration %d\n", desc_cfg->wTotalLength);
   // parse each interfaces
   while( p_desc < desc_end )
   {
@@ -1106,6 +1149,7 @@ static bool parse_configuration_descriptor(uint8_t dev_addr, tusb_desc_configura
 
     TU_ASSERT( TUSB_DESC_INTERFACE == tu_desc_type(p_desc) );
     tusb_desc_interface_t const* desc_itf = (tusb_desc_interface_t const*) p_desc;
+    printf("Interface %d\n", desc_itf->bInterfaceNumber);
 
 #if CFG_TUH_MIDI
     // MIDI has 2 interfaces (Audio Control v1 + MIDIStreaming) but does not have IAD

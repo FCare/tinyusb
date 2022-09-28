@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -77,7 +77,7 @@ void tuh_vendor_report_received_cb(uint8_t dev_addr, uint8_t instance, uint8_t c
 // Invoked when sent report to device successfully via interrupt endpoint
 TU_ATTR_WEAK void tuh_vendor_report_sent_cb(uint8_t dev_addr, uint8_t instance, uint8_t const* report, uint16_t len);
 
-bool tuh_vendor_receive_report(uint8_t dev_addr, uint8_t instance);
+bool tuh_vendor_receive_packet_in(uint8_t dev_addr, uint8_t instance);
 
 bool tuh_vendor_send_packet_out(uint8_t dev_addr, uint8_t instance, uint8_t *buffer, uint8_t size);
 

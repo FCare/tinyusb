@@ -227,6 +227,7 @@ enum {
 typedef enum
 {
   TUSB_DEVICE_STATE_UNPLUG = 0  ,
+  TUSB_DEVICE_STATE_PLUGGED     ,
   TUSB_DEVICE_STATE_CONFIGURED  ,
   TUSB_DEVICE_STATE_SUSPENDED   ,
 }tusb_device_state_t;
@@ -516,6 +517,16 @@ static inline uint8_t tu_edpt_addr(uint8_t num, uint8_t dir)
 static inline uint16_t tu_edpt_packet_size(tusb_desc_endpoint_t const* desc_ep)
 {
   return tu_le16toh(desc_ep->wMaxPacketSize) & TU_GENMASK(10, 0);
+}
+
+static inline const char *tu_edpt_dir_str(tusb_dir_t dir) {
+  static const char *str[] = {"out", "in"};
+  return str[dir];
+}
+
+static inline const char *tu_edpt_type_str(tusb_xfer_type_t t) {
+  static const char *str[] = {"control", "isochronous", "bulk", "interrupt"};
+  return str[t];
 }
 
 //--------------------------------------------------------------------+

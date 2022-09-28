@@ -68,6 +68,7 @@ static bool ctrlSync (uint8_t daddr, tusb_control_request_t const * request, xfe
 bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
 {
   // TODO need to claim the endpoint first
+
   const uint8_t rhport = usbh_get_rhport(dev_addr);
 
   _ctrl_xfer.request     = (*request);

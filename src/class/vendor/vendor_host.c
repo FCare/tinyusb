@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -94,7 +94,7 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
   //ONLY SUPPORT xbox 360 gamepad interface as defined in https://github.com/torvalds/linux/blob/master/drivers/input/joystick/xpad.c
   TU_VERIFY(desc_itf->bInterfaceClass == TUSB_CLASS_VENDOR_SPECIFIC);
   TU_VERIFY(desc_itf->bInterfaceSubClass == 93);
-  TU_VERIFY((desc_itf->bInterfaceProtocol == 1) || (desc_itf->bInterfaceProtocol == 129));
+  TU_VERIFY((desc_itf->bInterfaceProtocol == 1) || (desc_itf->bInterfaceProtocol == 129)); //only xbox360 like are supported
 
   TU_LOG1("VENDOR opening Interface %u (addr = %u) (endPoints %u)\r\n", desc_itf->bInterfaceNumber, dev_addr, desc_itf->bNumEndpoints);
 
@@ -116,7 +116,7 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
   while (nbEndpoint != 0) {
     p_desc = tu_desc_next(p_desc);
     tusb_desc_endpoint_t const * desc_ep = (tusb_desc_endpoint_t const *) p_desc;
-    TU_LOG1("VENDOR Endpoint %u type %u input %u size %u xfer %u sync %u usage %u interval %d\r\n", nbEndpoint, desc_ep->bDescriptorType, tu_edpt_dir(desc_ep->bEndpointAddress),
+    TU_LOG1("VENDOR Endpoint %u type %u address %x input %u size %u xfer %u sync %u usage %u interval %d\r\n", nbEndpoint, desc_ep->bDescriptorType, desc_ep->bEndpointAddress, tu_edpt_dir(desc_ep->bEndpointAddress),
     desc_ep->wMaxPacketSize, desc_ep->bmAttributes.xfer, desc_ep->bmAttributes.sync,  desc_ep->bmAttributes.usage, desc_ep->bInterval);
     if(TUSB_DESC_ENDPOINT == desc_ep->bDescriptorType) {
       nbEndpoint--;
@@ -151,7 +151,7 @@ bool vendorh_set_config(uint8_t dev_addr, uint8_t itf_num) {
 bool tuh_vendor_send_packet_out(uint8_t dev_addr, uint8_t instance, uint8_t *buffer, uint8_t size) {
   vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
   TU_VERIFY( usbh_edpt_claim(dev_addr, vendor_itf->ep_out) );
-  TU_LOG1("VENDOR SEND PACKET%u %d(%d)\r\n", dev_addr, size, vendor_itf->epout_size);
+  TU_LOG1("VENDOR SEND PACKET %u %d(%d)\r\n", dev_addr, size, vendor_itf->epout_size);
   usbh_edpt_xfer(dev_addr, vendor_itf->ep_out, buffer, size);
 }
 
@@ -162,14 +162,12 @@ bool tuh_vendor_protocol_get(uint8_t dev_addr , uint8_t instance, uint8_t *val) 
   return true;
 }
 
-
-bool tuh_vendor_receive_report(uint8_t dev_addr, uint8_t instance)
+bool tuh_vendor_receive_packet_in(uint8_t dev_addr, uint8_t instance)
 {
   vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
-  TU_LOG1("VENDOR RECEIVE REPORT %u\r\n", dev_addr);
+  TU_LOG1("VENDOR READ %u\r\n", dev_addr);
   // claim endpoint
   TU_VERIFY( usbh_edpt_claim(dev_addr, vendor_itf->ep_in) );
-  TU_LOG1("VENDOR VERIFIED REPORT %u %d\r\n", dev_addr, vendor_itf->epin_size);
   return usbh_edpt_xfer(dev_addr, vendor_itf->ep_in, vendor_itf->epin_buf, vendor_itf->epin_size);
 }
 
@@ -182,7 +180,8 @@ static void config_driver_mount_complete(uint8_t dev_addr, uint8_t instance, uin
   tuh_vendor_mount_cb(dev_addr, instance, desc_report, desc_len);
 
   // notify usbh that driver enumeration is complete
-  usbh_driver_set_config_complete(dev_addr, vendor_itf->itf_num);
+  // usbh_driver_set_config_complete(dev_addr, vendor_itf->itf_num);
+  printf("Mount completed\n");
 }
 
 bool vendorh_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes)
@@ -227,19 +226,22 @@ void vendorh_close(uint8_t dev_addr)
 // Get Device by address
 TU_ATTR_ALWAYS_INLINE static inline vendorh_device_t* get_dev(uint8_t dev_addr)
 {
+  TU_ASSERT(dev_addr <= CFG_TUH_DEVICE_MAX);
   return &_vendorh_dev[dev_addr-1];
 }
 
 // Get Interface by instance number
 TU_ATTR_ALWAYS_INLINE static inline vendorh_interface_t* get_instance(uint8_t dev_addr, uint8_t instance)
 {
+  TU_ASSERT(dev_addr <= CFG_TUH_DEVICE_MAX);
+  TU_ASSERT(instance < CFG_TUH_VENDOR);
   return &_vendorh_dev[dev_addr-1].instances[instance];
 }
 
 // Get instance ID by interface number
 static uint8_t get_instance_id_by_itfnum(uint8_t dev_addr, uint8_t itf)
 {
-  for ( uint8_t inst = 0; inst < CFG_TUH_HID; inst++ )
+  for ( uint8_t inst = 0; inst < CFG_TUH_VENDOR; inst++ )
   {
     vendorh_interface_t *vendor = get_instance(dev_addr, inst);
 
@@ -252,7 +254,7 @@ static uint8_t get_instance_id_by_itfnum(uint8_t dev_addr, uint8_t itf)
 // Get instance ID by endpoint address
 static uint8_t get_instance_id_by_epaddr(uint8_t dev_addr, uint8_t ep_addr)
 {
-  for ( uint8_t inst = 0; inst < CFG_TUH_HID; inst++ )
+  for ( uint8_t inst = 0; inst < CFG_TUH_VENDOR; inst++ )
   {
     vendorh_interface_t *vendor = get_instance(dev_addr, inst);
 
