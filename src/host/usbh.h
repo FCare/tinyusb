@@ -61,6 +61,8 @@ extern void hcd_int_handler(uint8_t rhport);
 #define tuh_int_handler   hcd_int_handler
 
 bool tuh_vid_pid_get(uint8_t daddr, uint16_t* vid, uint16_t* pid);
+bool tuh_product_get(uint8_t dev_addr, uint8_t* string);
+bool tuh_manufacturer_get(uint8_t dev_addr, uint8_t* string);
 
 tusb_speed_t tuh_speed_get(uint8_t daddr);
 
