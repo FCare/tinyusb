@@ -46,6 +46,7 @@ typedef struct
   uint8_t* buffer;
   tuh_control_complete_cb_t complete_cb;
   bool done;
+  uint8_t retry;
   xfer_result_t result;
 } usbh_control_xfer_t;
 
@@ -76,6 +77,7 @@ bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, 
   _ctrl_xfer.stage       = STAGE_SETUP;
   _ctrl_xfer.complete_cb = ctrlSync;
   _ctrl_xfer.done        = false;
+  _ctrl_xfer.retry       = 4;
 
   TU_LOG2("Control Setup (addr = %u): ", dev_addr);
   TU_LOG2_VAR(request);
@@ -94,6 +96,26 @@ static void _xfer_complete(uint8_t dev_addr, xfer_result_t result)
   if (_ctrl_xfer.complete_cb) _ctrl_xfer.complete_cb(dev_addr, &_ctrl_xfer.request, result);
 }
 
+static void tuh_control_clear_feature(uint8_t dev_addr, uint8_t ep_addr, uint8_t feature) {
+  TU_LOG3("tuh_control_clear_feature %x %x %x\n", dev_addr, ep_addr, feature);
+  tusb_control_request_t const request =
+  {
+    .bmRequestType_bit =
+    {
+      .recipient = TUSB_REQ_RCPT_ENDPOINT,
+      .type      = TUSB_REQ_TYPE_STANDARD,
+      .direction = TUSB_DIR_OUT
+    },
+    .bRequest = HOST_REQUEST_CLEAR_FEATURE,
+    .wValue   = feature,
+    .wIndex   = ep_addr, //genre 129
+    .wLength  = 0
+  };
+
+  TU_ASSERT( tuh_control_xfer(dev_addr, &request, NULL, NULL) );
+  return true;
+}
+
 bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32_t xferred_bytes)
 {
   (void) ep_addr;
@@ -106,42 +128,41 @@ bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t resu
   if (XFER_RESULT_SUCCESS != result)
   {
     TU_LOG2("Control failed: result = %d\r\n", result);
-
-    // terminate transfer if any stage failed
     _xfer_complete(dev_addr, result);
-  }else
+    // terminate transfer if any stage failed
+    return true;
+  }
+
+  switch(_ctrl_xfer.stage)
   {
-    switch(_ctrl_xfer.stage)
-    {
-      case STAGE_SETUP:
-        _ctrl_xfer.stage = STAGE_DATA;
-        if (request->wLength)
-        {
-          // DATA stage: initial data toggle is always 1
-          hcd_edpt_xfer(rhport, dev_addr, tu_edpt_addr(0, request->bmRequestType_bit.direction), _ctrl_xfer.buffer, request->wLength);
-          return true;
-        }
-        __attribute__((fallthrough));
+    case STAGE_SETUP:
+      _ctrl_xfer.stage = STAGE_DATA;
+      if (request->wLength)
+      {
+        // DATA stage: initial data toggle is always 1
+        hcd_edpt_xfer(rhport, dev_addr, tu_edpt_addr(0, request->bmRequestType_bit.direction), _ctrl_xfer.buffer, request->wLength);
+        return true;
+      }
+      __attribute__((fallthrough));
 
-      case STAGE_DATA:
-        _ctrl_xfer.stage = STAGE_ACK;
+    case STAGE_DATA:
+      _ctrl_xfer.stage = STAGE_ACK;
 
-        if (request->wLength)
-        {
-          TU_LOG2("Control data (addr = %u):\r\n", dev_addr);
-          TU_LOG2_MEM(_ctrl_xfer.buffer, request->wLength, 2);
-        }
+      if (request->wLength)
+      {
+        TU_LOG2("Control data (addr = %u):\r\n", dev_addr);
+        TU_LOG2_MEM(_ctrl_xfer.buffer, request->wLength, 2);
+      }
 
-        // ACK stage: toggle is always 1
-        hcd_edpt_xfer(rhport, dev_addr, tu_edpt_addr(0, 1-request->bmRequestType_bit.direction), NULL, 0);
-      break;
+      // ACK stage: toggle is always 1
+      hcd_edpt_xfer(rhport, dev_addr, tu_edpt_addr(0, 1-request->bmRequestType_bit.direction), NULL, 0);
+    break;
 
-      case STAGE_ACK:
-        _xfer_complete(dev_addr, result);
-      break;
+    case STAGE_ACK:
+      _xfer_complete(dev_addr, result);
+    break;
 
-      default: return false;
-    }
+    default: return false;
   }
 
   return true;

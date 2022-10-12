@@ -266,6 +266,7 @@ static void hcd_rp2040_irq(void)
     if (status & USB_INTS_STALL_BITS)
     {
         // We have rx'd a stall from the device
+        TU_LOG(2, "Stall Rec\n");
         handled |= USB_INTS_STALL_BITS;
         usb_hw_clear->sie_status = USB_SIE_STATUS_STALL_REC_BITS;
         hw_xfer_complete(get_epx_ep(), XFER_RESULT_STALLED);
@@ -632,11 +633,9 @@ bool hcd_setup_send(uint8_t rhport, uint8_t dev_addr, uint8_t const setup_packet
 
     // Set device address
     usb_hw->dev_addr_ctrl = dev_addr;
-
     // Set pre if we are a low speed device on full speed hub
     uint32_t flags = SIE_CTRL_BASE | USB_SIE_CTRL_SEND_SETUP_BITS |
                            (need_pre(dev_addr) ? USB_SIE_CTRL_PREAMBLE_EN_BITS : 0);
-
     usb_hw->sie_ctrl = flags;
 
     flags |= USB_SIE_CTRL_START_TRANS_BITS;

@@ -42,14 +42,6 @@
 #endif
 
 
-enum {
-  HOST_REQUEST_CLEAR_FEATURE   = 1  ,
-};
-
-enum{
-  HOST_ENDPOINT_HALT         = 0,
-};
-
 typedef bool (*tuh_msc_complete_cb_t)(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw);
 
 //--------------------------------------------------------------------+

@@ -83,6 +83,8 @@ bool tuh_vendor_send_packet_out(uint8_t dev_addr, uint8_t instance, uint8_t *buf
 
 bool tuh_vendor_protocol_get(uint8_t dev_addr , uint8_t instance, uint8_t *val);
 
+uint8_t vendor_interval_get(uint8_t dev_addr, uint8_t instance, uint8_t dir);
+
 //--------------------------------------------------------------------+
 // Internal Class Driver API
 //--------------------------------------------------------------------+

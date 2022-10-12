@@ -258,6 +258,11 @@ static bool tuh_control_xfer_safe(uint8_t dev_addr, tusb_control_request_t const
         return true;
       }
     }
+  } else {
+    if ( !hcd_port_connect_status(_dev0.rhport) ) {
+        TU_LOG2("Dev0 has been deconnected - abort\n");
+        return true;
+    }
   }
   return tuh_control_xfer(dev_addr, request, buffer, complete_cb);
 }
@@ -433,7 +438,7 @@ bool tuh_configuration_set(uint8_t daddr, uint8_t config_num, tuh_control_comple
     .wLength  = 0
   };
 
-  TU_ASSERT( tuh_control_xfer(daddr, &request, NULL, complete_cb) );
+  TU_ASSERT( tuh_control_xfer_safe(daddr, &request, NULL, complete_cb) );
   return true;
 }
 
@@ -1045,7 +1050,7 @@ static bool enum_request_set_addr()
     .wLength  = 0
   };
 
-  TU_ASSERT( tuh_control_xfer(addr0, &new_request, NULL, enum_set_address_complete) );
+  TU_ASSERT( tuh_control_xfer_safe(addr0, &new_request, NULL, enum_set_address_complete) );
 TU_LOG2("enum_request_set_addr done\n");
   return true;
 }

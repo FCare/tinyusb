@@ -1,4 +1,4 @@
-/* 
+/*
  * The MIT License (MIT)
  *
  * Copyright (c) 2019 Ha Thach (tinyusb.org)
@@ -91,6 +91,8 @@ bool tuh_hid_set_protocol(uint8_t dev_addr, uint8_t instance, uint8_t protocol);
 // Set Report using control endpoint
 // report_type is either Intput, Output or Feature, (value from hid_report_type_t)
 bool tuh_hid_set_report(uint8_t dev_addr, uint8_t instance, uint8_t report_id, uint8_t report_type, void* report, uint16_t len);
+
+bool tuh_hid_get_report(uint8_t daddr, uint8_t instance, uint8_t report_id, uint8_t report_type, void* buffer, uint16_t len, tuh_control_complete_cb_t complete_cb);
 
 //--------------------------------------------------------------------+
 // Interrupt Endpoint API

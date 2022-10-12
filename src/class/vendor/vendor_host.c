@@ -47,6 +47,9 @@ typedef struct
   uint8_t ep_in;
   uint8_t ep_out;
 
+  uint8_t interval_in;
+  uint8_t interval_out;
+
   uint16_t epin_size;
   uint16_t epout_size;
 
@@ -123,12 +126,14 @@ bool vendorh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const 
         TU_ASSERT( usbh_edpt_open(rhport, dev_addr, desc_ep) );
 
         if(tu_edpt_dir(desc_ep->bEndpointAddress) == TUSB_DIR_OUT) {
-          vendor_itf->ep_out     = desc_ep->bEndpointAddress;
-          vendor_itf->epout_size = desc_ep->wMaxPacketSize;
+          vendor_itf->ep_out       = desc_ep->bEndpointAddress;
+          vendor_itf->interval_out = desc_ep->bInterval;
+          vendor_itf->epout_size   = desc_ep->wMaxPacketSize;
         }
         else {
-          vendor_itf->ep_in     = desc_ep->bEndpointAddress;
-          vendor_itf->epin_size = desc_ep->wMaxPacketSize;
+          vendor_itf->ep_in        = desc_ep->bEndpointAddress;
+          vendor_itf->interval_in  = desc_ep->bInterval;
+          vendor_itf->epin_size    = desc_ep->wMaxPacketSize;
         }
     }
   }
@@ -152,6 +157,7 @@ bool tuh_vendor_send_packet_out(uint8_t dev_addr, uint8_t instance, uint8_t *buf
   vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
   TU_VERIFY( usbh_edpt_claim(dev_addr, vendor_itf->ep_out) );
   TU_LOG1("VENDOR SEND PACKET %u %d(%d)\r\n", dev_addr, size, vendor_itf->epout_size);
+  TU_LOG1_MEM(buffer, size, 2);
   usbh_edpt_xfer(dev_addr, vendor_itf->ep_out, buffer, size);
 }
 
@@ -160,6 +166,13 @@ bool tuh_vendor_protocol_get(uint8_t dev_addr , uint8_t instance, uint8_t *val) 
   vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
   *val = vendor_itf->itf_protocol;
   return true;
+}
+
+uint8_t vendor_interval_get(uint8_t dev_addr, uint8_t instance, uint8_t dir) {
+  vendorh_interface_t* vendor_itf = get_instance(dev_addr, instance);
+  // claim endpoint
+  if (dir == 0) return vendor_itf->interval_in;
+  else return vendor_itf->interval_out;
 }
 
 bool tuh_vendor_receive_packet_in(uint8_t dev_addr, uint8_t instance)

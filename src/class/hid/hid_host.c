@@ -286,7 +286,7 @@ bool hidh_open(uint8_t rhport, uint8_t dev_addr, tusb_desc_interface_t const *de
   hidh_device_t* hid_dev = get_dev(dev_addr);
   TU_ASSERT(hid_dev->inst_count < CFG_TUH_HID, 0);
 
-  hidh_interface_t* hid_itf = get_instance(dev_addr, hid_dev->inst_count);  
+  hidh_interface_t* hid_itf = get_instance(dev_addr, hid_dev->inst_count);
 
   //------------- Endpoint Descriptors -------------//
   p_desc = tu_desc_next(p_desc);
@@ -353,6 +353,28 @@ bool hidh_set_config(uint8_t dev_addr, uint8_t itf_num)
 
   TU_ASSERT( tuh_control_xfer(dev_addr, &request, NULL, (hid_itf->itf_protocol != HID_ITF_PROTOCOL_NONE) ? config_set_protocol : config_get_report_desc) );
 
+  return true;
+}
+
+bool tuh_hid_get_report(uint8_t dev_addr, uint8_t instance, uint8_t report_id, uint8_t report_type, void* buffer, uint16_t len, tuh_control_complete_cb_t complete_cb)
+{
+  hidh_interface_t* hid_itf = get_instance(dev_addr, instance);
+
+  tusb_control_request_t const request =
+  {
+    .bmRequestType_bit =
+    {
+      .recipient = TUSB_REQ_RCPT_INTERFACE,
+      .type      = TUSB_REQ_TYPE_CLASS,
+      .direction = TUSB_DIR_IN
+    },
+    .bRequest = HID_REQ_CONTROL_GET_REPORT,
+    .wValue   = tu_htole16( TU_U16(report_type, report_id) ),
+    .wIndex   = hid_itf->itf_num,
+    .wLength  = tu_htole16(len)
+  };
+
+  TU_ASSERT( tuh_control_xfer(dev_addr, &request, buffer, complete_cb) );
   return true;
 }
 

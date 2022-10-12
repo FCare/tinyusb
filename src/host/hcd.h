@@ -173,6 +173,14 @@ extern void hcd_event_device_remove(uint8_t rhport, bool in_isr);
 // Helper to send USB transfer event
 extern void hcd_event_xfer_complete(uint8_t dev_addr, uint8_t ep_addr, uint32_t xferred_bytes, xfer_result_t result, bool in_isr);
 
+enum {
+  HOST_REQUEST_CLEAR_FEATURE   = 1  ,
+};
+
+enum{
+  HOST_ENDPOINT_HALT         = 0,
+};
+
 #ifdef __cplusplus
  }
 #endif
