@@ -191,7 +191,8 @@ static void hw_handle_buff_status(void)
             {
                 remaining_buffers &= ~bit;
                 _handle_buff_status_bit(bit, &ep_pool[i]);
-            }        }
+            }
+        }
     }
 
     if (remaining_buffers)
@@ -320,7 +321,7 @@ static struct hw_endpoint *_hw_endpoint_allocate(uint8_t transfer_type)
     ep = _next_free_ep(transfer_type);
     assert(ep);
 
-    if (transfer_type != TUSB_XFER_CONTROL)
+    if (transfer_type == TUSB_XFER_INTERRUPT)
     {
         pico_info("Allocate %s ep %d\n", tu_edpt_type_str(transfer_type), ep->interrupt_num);
         ep->buffer_control = &usbh_dpram->int_ep_buffer_ctrl[ep->interrupt_num].ctrl;
