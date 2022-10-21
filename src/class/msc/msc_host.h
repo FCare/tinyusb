@@ -86,12 +86,14 @@ bool tuh_msc_mode_sense(uint8_t dev_addr, uint8_t lun, uint8_t page_code, uint8_
 // Perform SCSI Read 10 command. Read n blocks starting from LBA to buffer
 // Complete callback is invoked when SCSI op is complete.
 bool  tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb);
+bool  tuh_msc_read10_async(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb);
 
 bool  tuh_msc_read_cd(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint32_t block_count, bool subQ, tuh_msc_complete_cb_t complete_cb);
 
 // Perform SCSI Write 10 command. Write n blocks starting from LBA to device
 // Complete callback is invoked when SCSI op is complete.
 bool tuh_msc_write10(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb);
+bool tuh_msc_write10_sync(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb);
 
 // Perform SCSI Read Capacity 10 command
 // Complete callback is invoked when SCSI op is complete.
