@@ -560,8 +560,7 @@ bool hcd_edpt_xfer(uint8_t rhport, uint8_t dev_addr, uint8_t ep_addr, uint8_t * 
     tusb_dir_t const ep_dir = tu_edpt_dir(ep_addr);
 
     if (ep_dir == TUSB_DIR_OUT){
-      for (int i = 0; i<buflen; i++) pico_trace("%x ",buffer[i]);
-      pico_trace("\n");
+      TU_LOG2_MEM(buffer, buflen, 2);
     }
     // Get appropriate ep. Either EPX or interrupt endpoint
     struct hw_endpoint *ep = get_dev_ep(dev_addr, ep_addr);

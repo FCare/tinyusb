@@ -315,8 +315,7 @@ bool hw_endpoint_xfer_continue(struct hw_endpoint *ep)
     pico_trace("Completed transfer of %d bytes on ep %d %s\n",
                ep->xferred_len, tu_edpt_number(ep->ep_addr), ep_dir_string[tu_edpt_dir(ep->ep_addr)]);
      uint8_t* allBuf = ep->user_buf - ep->xferred_len;
-     for (int i = 0; i<ep->xferred_len; i++) TU_LOG3("%x ",allBuf[i]);
-     TU_LOG3("\n");
+     TU_LOG3_MEM(allBuf, ep->xferred_len, 2);
     // Notify caller we are done so it can notify the tinyusb stack
     _hw_endpoint_lock_update(ep, -1);
     return true;

@@ -117,6 +117,8 @@ bool tuh_descriptor_string_product_get(uint8_t daddr, uint16_t language_id, void
 // Get serial string descriptor
 bool tuh_descriptor_string_serial_get(uint8_t daddr, uint16_t language_id, void* buffer, uint16_t len, tuh_control_complete_cb_t complete_cb);
 
+
+extern void process_device_unplugged(uint8_t rhport, uint8_t hub_addr, uint8_t hub_port);
 //--------------------------------------------------------------------+
 // APPLICATION CALLBACK
 //--------------------------------------------------------------------+

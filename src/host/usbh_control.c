@@ -66,27 +66,48 @@ static bool ctrlSync (uint8_t daddr, tusb_control_request_t const * request, xfe
   return true;
 }
 
+static void tuh_control_event_cb(hcd_event_t *event, bool start) {
+  if (start) {
+    TU_LOG2("Control Setup (addr = %u)\n", event->dev_addr);
+    TU_LOG2_MEM(event->request, sizeof(tusb_control_request_t), 2);
+
+    _ctrl_xfer.request     = *((tusb_control_request_t*)event->request);
+    _ctrl_xfer.buffer      = event->buffer;
+    _ctrl_xfer.stage       = STAGE_SETUP;
+    _ctrl_xfer.complete_cb = event->complete_cb;
+  } else {
+    if (event->request != NULL) {
+      TU_LOG2("Free %d\r\n", __LINE__);
+      free(event->request);
+      event->request = NULL;
+    }
+  }
+
+}
+
 bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
 {
   // TODO need to claim the endpoint first
-
+TU_LOG2("%d\r\n", __LINE__);
   const uint8_t rhport = usbh_get_rhport(dev_addr);
+TU_LOG2("%d %d\r\n", __LINE__, sizeof(tusb_control_request_t));
+  tusb_control_request_t *new_request = (tusb_control_request_t*)malloc(sizeof(tusb_control_request_t));
+  TU_LOG2("%d\r\n", __LINE__);
+  memcpy(new_request, request, sizeof(tusb_control_request_t));
 
-  _ctrl_xfer.request     = (*request);
-  _ctrl_xfer.buffer      = buffer;
-  _ctrl_xfer.stage       = STAGE_SETUP;
-  _ctrl_xfer.complete_cb = ctrlSync;
-  _ctrl_xfer.done        = false;
-  _ctrl_xfer.retry       = 4;
-
-  TU_LOG2("Control Setup (addr = %u): ", dev_addr);
-  TU_LOG2_VAR(request);
-  TU_LOG2("\r\n");
-
-  // Send setup packet
-  TU_ASSERT( hcd_setup_send(rhport, dev_addr, (uint8_t const*) &_ctrl_xfer.request) );
-  while(!_ctrl_xfer.done)  {tuh_task();};
-  if (complete_cb) complete_cb(dev_addr, (uint8_t const*) &_ctrl_xfer.request, _ctrl_xfer.result);
+  TU_LOG2("%d\r\n", __LINE__);
+  hcd_event_t event =
+  {
+    .rhport = rhport,
+    .dev_addr  = dev_addr,
+    .event_id = HCD_EVENT_CTRL_COMMAND,
+    .request = (void *)new_request,
+    .complete_cb = (void *)complete_cb,
+    .buffer = buffer,
+    .event_cb = tuh_control_event_cb,
+  };
+  TU_LOG2("Add handler HCD_EVENT_CTRL_COMMAND\n");
+  hcd_event_handler(&event, false);
   return true;
 }
 

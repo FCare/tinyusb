@@ -343,19 +343,16 @@ static bool connection_clear_conn_change_complete (uint8_t dev_addr, tusb_contro
     hub_port_reset(dev_addr, port_num, connection_port_reset_complete);
   }else
   {
-    // submit detach event
-    hcd_event_t event =
-    {
-      .rhport     = usbh_get_rhport(dev_addr),
-      .event_id   = HCD_EVENT_DEVICE_REMOVE,
-      .connection =
-       {
-         .hub_addr = dev_addr,
-         .hub_port = port_num
-       }
-    };
+    process_device_unplugged(usbh_get_rhport(dev_addr), dev_addr, port_num);
 
-    hcd_event_handler(&event, false);
+    #if CFG_TUH_HUB
+    // TODO remove
+    if ( dev_addr!= 0)
+    {
+      // done with hub, waiting for next data on status pipe
+      (void) hub_status_pipe_queue(dev_addr);
+    }
+    #endif
   }
 
   return true;

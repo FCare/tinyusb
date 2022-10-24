@@ -220,8 +220,10 @@ CFG_TUSB_MEM_SECTION usbh_device_t _usbh_devices[CFG_TUH_DEVICE_MAX + CFG_TUH_HU
 // Event queue
 // role device/host is used by OS NONE for mutex (disable usb isr)
 OSAL_QUEUE_DEF(usbh_int_set, _usbh_qdef, CFG_TUH_TASK_QUEUE_SZ, hcd_event_t);
+OSAL_QUEUE_DEF(usbh_int_set, _usbh_cb_qdef, CFG_TUH_TASK_QUEUE_SZ, hcd_cb_event_t);
+
 static osal_queue_t _usbh_q;
-static bool osal_interrupt = false;
+static osal_queue_t _usbh_cb_q;
 CFG_TUSB_MEM_SECTION CFG_TUSB_MEM_ALIGN static uint8_t _usbh_ctrl_buf[CFG_TUH_ENUMERATION_BUFSIZE];
 
 //------------- Helper Function -------------//
@@ -234,7 +236,6 @@ static inline usbh_device_t* get_device(uint8_t dev_addr)
 }
 
 static bool enum_new_device(hcd_event_t* event);
-static void process_device_unplugged(uint8_t rhport, uint8_t hub_addr, uint8_t hub_port);
 static bool usbh_edpt_control_open(uint8_t dev_addr, uint8_t max_packet_size);
 
 // from usbh_control.c
@@ -243,27 +244,23 @@ extern bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result
 static bool enum_request_set_addr();
 
 
-static bool osal_queue_interrupt() {
-  return osal_interrupt;
-}
-
-
 static bool tuh_control_xfer_safe(uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
 {
-  if (dev_addr != 0) {
-    usbh_device_t* dev = get_device(dev_addr);
-    if (dev->connected==1) {
-      if (dev->state == TUSB_DEVICE_STATE_UNPLUG) {
-        TU_LOG2("Dev addr %d has been deconnected - abort\n", dev_addr);
-        return true;
-      }
-    }
-  } else {
-    if ( !hcd_port_connect_status(_dev0.rhport) ) {
-        TU_LOG2("Dev0 has been deconnected - abort\n");
-        return true;
-    }
-  }
+  // if (dev_addr != 0) {
+  //   usbh_device_t* dev = get_device(dev_addr);
+  //   if (dev->connected==1) {
+  //     if (dev->state == TUSB_DEVICE_STATE_UNPLUG) {
+  //       TU_LOG2("Dev addr %d has been deconnected - abort\n", dev_addr);
+  //       return true;
+  //     }
+  //   }
+  // } else {
+  //   if ( !hcd_port_connect_status(_dev0.rhport) ) {
+  //       TU_LOG2("Dev0 has been deconnected - abort\n");
+  //       return true;
+  //   }
+  // }
+  TU_LOG2("%d\r\n", __LINE__);
   return tuh_control_xfer(dev_addr, request, buffer, complete_cb);
 }
 //--------------------------------------------------------------------+
@@ -470,7 +467,8 @@ bool tuh_init(uint8_t rhport)
   //------------- Enumeration & Reporter Task init -------------//
   _usbh_q = osal_queue_create( &_usbh_qdef );
   TU_ASSERT(_usbh_q != NULL);
-  osal_interrupt = false;
+  _usbh_cb_q = osal_queue_create( &_usbh_cb_qdef );
+  TU_ASSERT(_usbh_cb_q != NULL);
 
   //------------- Semaphore, Mutex for Control Pipe -------------//
   for(uint8_t i=0; i<TU_ARRAY_SIZE(_usbh_devices); i++)
@@ -519,73 +517,83 @@ bool tuh_init(uint8_t rhport)
     @endcode
  */
 
+static bool cmdIsOnGoing = false;
+
 static void handle_osal_queue() {
   while (1)
   {
     hcd_event_t event;
+    hcd_cb_event_t cb_event;
+
+    if ( osal_queue_receive(_usbh_cb_q, &cb_event) ) {
+      TU_LOG2("Cmd done, call xfer_cb\n");
+      cmdIsOnGoing = false;
+      uint8_t const epnum   = tu_edpt_number(cb_event.ep_addr);
+      uint8_t const ep_dir  = tu_edpt_dir(cb_event.ep_addr);
+      if (cb_event.dev_addr == 0)
+      {
+        // device 0 only has control endpoint
+        TU_ASSERT(epnum == 0);
+        usbh_control_xfer_cb(cb_event.dev_addr, cb_event.ep_addr, cb_event.result, cb_event.xferred_bytes);
+      }
+      else
+      {
+        usbh_device_t* dev = get_device(cb_event.dev_addr);
+        dev->ep_status[epnum][ep_dir].busy = false;
+        dev->ep_status[epnum][ep_dir].claimed = 0;
+
+        if ( 0 == epnum )
+        {
+          usbh_control_xfer_cb(cb_event.dev_addr, cb_event.ep_addr, cb_event.result, cb_event.xferred_bytes);
+        }else
+        {
+          uint8_t drv_id = dev->ep2drv[epnum][ep_dir];
+          TU_ASSERT(drv_id < USBH_CLASS_DRIVER_COUNT, );
+          TU_LOG2("%s xfer callback\r\n", usbh_class_drivers[drv_id].name);
+          usbh_class_drivers[drv_id].xfer_cb(cb_event.dev_addr, cb_event.ep_addr, cb_event.result, cb_event.xferred_bytes);
+        }
+      }
+      return;
+    }
+
+    if (cmdIsOnGoing) return;
 
     if ( !osal_queue_receive(_usbh_q, &event) ) {
-      osal_interrupt = false;
       return;
     }
 
     switch (event.event_id)
     {
+      case HCD_EVENT_CTRL_COMMAND:
+      {
+        if (event.event_cb) event.event_cb(&event, true);
+
+        cmdIsOnGoing = true;
+        // Send setup packet
+        TU_ASSERT( hcd_setup_send(event.rhport, event.dev_addr, (uint8_t const*)event.request) );
+
+        if (event.event_cb) event.event_cb(&event, false);
+      }
+      break;
+
+      case HCD_EVENT_HOST_COMMAND:
+      {
+        if (event.event_cb) event.event_cb(&event, true);
+
+        cmdIsOnGoing = true;
+
+        TU_ASSERT(usbh_edpt_xfer(event.dev_addr, event.ep_addr, (uint8_t*) event.request, sizeof(msc_cbw_t)));
+
+        if (event.event_cb) event.event_cb(&event, false);
+      }
+      break;
+
       case HCD_EVENT_DEVICE_ATTACH:
         // TODO due to the shared _usbh_ctrl_buf, we must complete enumerating
         // one device before enumerating another one.
         TU_LOG2("USBH DEVICE ATTACH\r\n");
         enum_new_device(&event);
         TU_LOG2("USBH DEVICE ATTACH done\n");
-      break;
-
-      case HCD_EVENT_DEVICE_REMOVE:
-        TU_LOG2("USBH DEVICE REMOVED\r\n");
-        process_device_unplugged(event.rhport, event.connection.hub_addr, event.connection.hub_port);
-
-        #if CFG_TUH_HUB
-        // TODO remove
-        if ( event.connection.hub_addr != 0)
-        {
-          // done with hub, waiting for next data on status pipe
-          (void) hub_status_pipe_queue( event.connection.hub_addr );
-        }
-        #endif
-      break;
-
-      case HCD_EVENT_XFER_COMPLETE:
-      {
-        uint8_t const ep_addr = event.xfer_complete.ep_addr;
-        uint8_t const epnum   = tu_edpt_number(ep_addr);
-        uint8_t const ep_dir  = tu_edpt_dir(ep_addr);
-
-        TU_LOG2("on dev %d EP %02X with %u bytes\r\n", event.dev_addr, ep_addr, (unsigned int) event.xfer_complete.len);
-
-        if (event.dev_addr == 0)
-        {
-          // device 0 only has control endpoint
-          TU_ASSERT(epnum == 0, );
-          usbh_control_xfer_cb(event.dev_addr, ep_addr, event.xfer_complete.result, event.xfer_complete.len);
-        }
-        else
-        {
-          usbh_device_t* dev = get_device(event.dev_addr);
-          dev->ep_status[epnum][ep_dir].busy = false;
-          dev->ep_status[epnum][ep_dir].claimed = 0;
-
-          if ( 0 == epnum )
-          {
-            usbh_control_xfer_cb(event.dev_addr, ep_addr, event.xfer_complete.result, event.xfer_complete.len);
-          }else
-          {
-            uint8_t drv_id = dev->ep2drv[epnum][ep_dir];
-            TU_ASSERT(drv_id < USBH_CLASS_DRIVER_COUNT, );
-
-            TU_LOG2("%s xfer callback\r\n", usbh_class_drivers[drv_id].name);
-            usbh_class_drivers[drv_id].xfer_cb(event.dev_addr, ep_addr, event.xfer_complete.result, event.xfer_complete.len);
-          }
-        }
-      }
       break;
 
       case USBH_EVENT_FUNC_CALL:
@@ -603,13 +611,6 @@ void tuh_task(void)
   // Loop until there is no more events in the queue
   handle_osal_queue();
 
-}
-
-void tuh_task_minimum(void)
-{
-  if ( !tusb_inited() ) return;
-
-  if (osal_queue_interrupt()) handle_osal_queue();
 }
 
 //--------------------------------------------------------------------+
@@ -663,32 +664,35 @@ void hcd_devtree_get_info(uint8_t dev_addr, hcd_devtree_info_t* devtree_info)
 
 void hcd_event_handler(hcd_event_t const* event, bool in_isr)
 {
-  switch (event->event_id)
-  {
-    case HCD_EVENT_DEVICE_REMOVE:
-      osal_interrupt = true;
-    default:
-      osal_queue_send(_usbh_q, event, in_isr);
-    break;
-  }
+  osal_queue_send(_usbh_q, event, in_isr);
+}
+
+void hcd_event_cb_handler(hcd_cb_event_t const* event, bool in_isr)
+{
+  osal_queue_send(_usbh_cb_q, event, in_isr);
 }
 
 void hcd_event_xfer_complete(uint8_t dev_addr, uint8_t ep_addr, uint32_t xferred_bytes, xfer_result_t result, bool in_isr)
 {
-  hcd_event_t event =
-  {
-    .rhport   = 0, // TODO correct rhport
-    .event_id = HCD_EVENT_XFER_COMPLETE,
-    .dev_addr = dev_addr,
-    .xfer_complete =
-    {
-      .ep_addr = ep_addr,
-      .result  = result,
-      .len     = xferred_bytes
-    }
-  };
+  TU_LOG2("on dev %d EP %02X with %u bytes\r\n", dev_addr, ep_addr, (unsigned int) xferred_bytes);
+  uint8_t const epnum   = tu_edpt_number(ep_addr);
+  uint8_t const ep_dir  = tu_edpt_dir(ep_addr);
 
-  hcd_event_handler(&event, in_isr);
+  if (dev_addr != 0)
+  {
+    usbh_device_t* dev = get_device(dev_addr);
+    dev->ep_status[epnum][ep_dir].busy = false;
+    dev->ep_status[epnum][ep_dir].claimed = 0;
+  }
+
+  hcd_cb_event_t event =
+  {
+    .dev_addr   = dev_addr,
+    .ep_addr    = ep_addr,
+    .xferred_bytes = xferred_bytes,
+    .result = result,
+  };
+  hcd_event_cb_handler(&event, true);
 }
 
 void hcd_event_device_attach(uint8_t rhport, bool in_isr)
@@ -707,27 +711,8 @@ void hcd_event_device_attach(uint8_t rhport, bool in_isr)
 
 void hcd_event_device_remove(uint8_t hostid, bool in_isr)
 {
-//   hcd_event_t event =
-//   {
-//     .rhport   = hostid,
-//     .event_id = HCD_EVENT_DEVICE_REMOVE
-//   };
-//
-TU_LOG2("!!!!DETACh detected %d!!!\n", hostid);
-//   event.connection.hub_addr = 0;
-//   event.connection.hub_port = 0;
-//
-//   hcd_event_handler(&event, in_isr);
-process_device_unplugged(hostid, 0, 0);
-
-#if CFG_TUH_HUB
-// // TODO remove
-// if ( event.connection.hub_addr != 0)
-// {
-//   // done with hub, waiting for next data on status pipe
-  // (void) hub_status_pipe_queue( event.connection.hub_addr );
-// }
-#endif
+  TU_LOG2("!!!!DETACh detected %d!!!\n", hostid);
+  process_device_unplugged(hostid, 0, 0);
 }
 
 
@@ -1049,7 +1034,6 @@ static bool enum_request_set_addr()
     .wIndex   = 0,
     .wLength  = 0
   };
-
   TU_ASSERT( tuh_control_xfer_safe(addr0, &new_request, NULL, enum_set_address_complete) );
 TU_LOG2("enum_request_set_addr done\n");
   return true;

@@ -54,8 +54,8 @@
 typedef enum
 {
   HCD_EVENT_DEVICE_ATTACH,
-  HCD_EVENT_DEVICE_REMOVE,
-  HCD_EVENT_XFER_COMPLETE,
+  HCD_EVENT_HOST_COMMAND,
+  HCD_EVENT_CTRL_COMMAND,
 
   // Not an HCD event, just a convenient way to defer ISR function
   USBH_EVENT_FUNC_CALL,
@@ -63,11 +63,20 @@ typedef enum
   HCD_EVENT_COUNT
 } hcd_eventid_t;
 
-typedef struct
+typedef struct hcd_event_s;
+
+typedef void (*event_cb_func)(struct hcd_event_s *ev, bool start);
+
+typedef struct hcd_event_s
 {
   uint8_t rhport;
   uint8_t event_id;
   uint8_t dev_addr;
+  uint8_t ep_addr;
+  void* request;
+  void *buffer;
+  void* complete_cb;
+  event_cb_func event_cb;
 
   union
   {
@@ -93,6 +102,15 @@ typedef struct
   };
 
 } hcd_event_t;
+
+typedef struct
+{
+  uint8_t dev_addr;
+  uint8_t ep_addr;
+  uint8_t drv_id;
+  uint32_t xferred_bytes;
+  xfer_result_t result;
+} hcd_cb_event_t;
 
 typedef struct {
   uint8_t rhport;

@@ -164,66 +164,72 @@ static bool clear_feature_complete(uint8_t dev_addr, tusb_control_request_t cons
   return true;
 }
 
-static bool tuh_msc_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, msc_cbw_t* resp_cbw, msc_csw_t *resp_csw)
+static msc_cbw_t* nextToFree = NULL;
+static void msch_event_start(hcd_event_t *event, bool start) {
+  if (start) {
+    msch_interface_t* p_msc = get_itf(event->dev_addr);
+
+    nextToFree = (msc_cbw_t*)event->request;
+    p_msc->cbw = *(nextToFree);
+    p_msc->stage = MSC_STAGE_CMD;
+    p_msc->buffer = event->buffer;
+    p_msc->complete_cb = (tuh_msc_complete_cb_t)event->complete_cb;
+
+    TU_LOG2("Scsi Cmd: \n");
+    TU_LOG2_MEM(p_msc->cbw.command, p_msc->cbw.cmd_len, 2);
+  }
+}
+
+static bool tuh_msc_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, tuh_msc_complete_cb_t complete_cb)
 {
   msch_interface_t* p_msc = get_itf(dev_addr);
   TU_VERIFY(p_msc->configured);
 
-  // TODO claim endpoint
-
-  TU_LOG2("Scsi Cmd: \n");
+  TU_LOG2("Stack MSC Cmd: \n");
   TU_LOG2_MEM(cbw->command, cbw->cmd_len, 2);
 
-  p_msc->cbw = *cbw;
-  p_msc->stage = MSC_STAGE_CMD;
-  p_msc->buffer = data;
-  p_msc->complete_cb = setSync;
-  p_msc->retry = 4;
-  p_msc->done = false;
+  msc_cbw_t *new_cbw = (msc_cbw_t *)malloc(sizeof(msc_cbw_t));
+  memcpy(new_cbw, cbw, sizeof(msc_cbw_t));
+  hcd_event_t event =
+  {
+    .dev_addr = dev_addr,
+    .ep_addr  = p_msc->ep_out,
+    .event_id = HCD_EVENT_HOST_COMMAND,
+    .buffer   = data,
+    .request  = (void *)new_cbw,
+    .complete_cb = (void *)complete_cb,
+    .event_cb = msch_event_start,
+  };
 
-  TU_ASSERT(usbh_edpt_xfer(dev_addr, p_msc->ep_out, (uint8_t*) &p_msc->cbw, sizeof(msc_cbw_t)));
-  while(!p_msc->done) {tuh_task();};
+  hcd_event_handler(&event, false);
 
-  if (resp_cbw) memcpy(resp_cbw, &p_msc->cbw, sizeof(msc_cbw_t));
-  if (resp_csw) memcpy(resp_csw, &p_msc->csw, sizeof(msc_csw_t));
-  return (resp_csw->status == MSC_CSW_STATUS_GOOD);
+  return true;
 }
 
 bool tuh_msc_scsi_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, tuh_msc_complete_cb_t complete_cb)
 {
-  bool ret = false;
-  msc_cbw_t resp_cbw;
-  msc_csw_t resp_csw;
 
-  ret = tuh_msc_command(dev_addr, cbw, data, &resp_cbw, &resp_csw);
-  if (resp_csw.status == MSC_CSW_STATUS_CHECK_CONDITION)
-    ret |= tuh_msc_request_sense(dev_addr, cbw->lun, _msch_buffer, NULL);
-  if (complete_cb) complete_cb(dev_addr, &resp_cbw, &resp_csw);
-  return ret;
-}
-
-bool tuh_msc_scsi_async_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, tuh_msc_complete_cb_t complete_cb)
-{
-  bool ret = false;
-  msc_cbw_t resp_cbw;
-  msc_csw_t resp_csw;
-
-
-  msch_interface_t* p_msc = get_itf(dev_addr);
-  TU_VERIFY(p_msc->configured);
-
-  // TODO claim endpoint
-
-  TU_LOG2("Scsi Cmd: \n");
-  TU_LOG2_MEM(cbw->command, cbw->cmd_len, 2);
-
-  p_msc->cbw = *cbw;
-  p_msc->stage = MSC_STAGE_CMD;
-  p_msc->buffer = data;
-  p_msc->complete_cb = complete_cb;
-
-  TU_ASSERT(usbh_edpt_xfer(dev_addr, p_msc->ep_out, (uint8_t*) &p_msc->cbw, sizeof(msc_cbw_t)));
-  return true;
+  return tuh_msc_command(dev_addr, cbw, data, complete_cb);
+  // bool ret = false;
+  // msc_cbw_t resp_cbw;
+  // msc_csw_t resp_csw;
+  //
+  //
+  // msch_interface_t* p_msc = get_itf(dev_addr);
+  // TU_VERIFY(p_msc->configured);
+  //
+  // // TODO claim endpoint
+  //
+  // TU_LOG2("Stack Scsi Cmd: \n");
+  // TU_LOG2_MEM(cbw->command, cbw->cmd_len, 2);
+  //
+  // p_msc->cbw = *cbw;
+  // p_msc->stage = MSC_STAGE_CMD;
+  // p_msc->buffer = data;
+  // p_msc->complete_cb = complete_cb;
+  //
+  // TU_ASSERT(usbh_edpt_xfer(dev_addr, p_msc->ep_out, (uint8_t*) &p_msc->cbw, sizeof(msc_cbw_t)));
+  // return true;
 }
 
 bool tuh_msc_read_capacity(uint8_t dev_addr, uint8_t lun, scsi_read_capacity10_resp_t* response, tuh_msc_complete_cb_t complete_cb)
@@ -322,8 +328,6 @@ bool tuh_msc_request_sense(uint8_t dev_addr, uint8_t lun, void *resposne, tuh_ms
 {
   msc_cbw_t cbw;
   bool ret = false;
-  msc_cbw_t resp_cbw;
-  msc_csw_t resp_csw;
   cbw_init(&cbw, lun);
 
   TU_LOG1("Request sense LUN = %d\n", lun);
@@ -339,9 +343,8 @@ bool tuh_msc_request_sense(uint8_t dev_addr, uint8_t lun, void *resposne, tuh_ms
   };
 
   memcpy(&cbw.command[0], &cmd_request_sense, cbw.cmd_len);
-  ret = tuh_msc_command(dev_addr, &cbw, resposne, &resp_cbw, &resp_csw);
-  if (complete_cb) complete_cb(dev_addr, &resp_cbw, &resp_csw);
-  return ret;
+  ret = tuh_msc_command(dev_addr, &cbw, resposne, complete_cb);
+  return true;
 }
 
 bool tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb)
@@ -365,7 +368,7 @@ bool tuh_msc_read10(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, 
 
   memcpy(cbw.command, &cmd_read10, cbw.cmd_len);
 
-  return tuh_msc_scsi_async_command(dev_addr, &cbw, buffer, complete_cb);
+  return tuh_msc_scsi_command(dev_addr, &cbw, buffer, complete_cb);
 }
 
 bool tuh_msc_read10_sync(uint8_t dev_addr, uint8_t lun, void * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb)
@@ -529,7 +532,7 @@ bool tuh_msc_write10(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_
 
   memcpy(cbw.command, &cmd_write10, cbw.cmd_len);
 
-  return tuh_msc_scsi_async_command(dev_addr, &cbw, (void*)(uintptr_t) buffer, complete_cb);
+  return tuh_msc_scsi_command(dev_addr, &cbw, (void*)(uintptr_t) buffer, complete_cb);
 }
 bool tuh_msc_write10_sync(uint8_t dev_addr, uint8_t lun, void const * buffer, uint32_t lba, uint16_t block_count, tuh_msc_complete_cb_t complete_cb)
 {
@@ -650,6 +653,12 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
   msch_interface_t* p_msc = get_itf(dev_addr);
   msc_cbw_t const * cbw = &p_msc->cbw;
   msc_csw_t       * csw = &p_msc->csw;
+
+  if (nextToFree != NULL) {
+    free(nextToFree);
+    nextToFree = NULL;
+  }
+
   TU_LOG2("MSC Xfer stage %d %x %x Transfert:%x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer, event);
   if (event != XFER_RESULT_SUCCESS) {
       if (event == XFER_RESULT_STALLED) {
@@ -691,6 +700,7 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
   {
     case MSC_STAGE_CMD:
       // Must be Command Block
+      TU_LOG3("%d=%d %d=%d %d=%d\n",ep_addr,p_msc->ep_out,event,XFER_RESULT_SUCCESS,xferred_bytes,sizeof(msc_cbw_t));
       TU_ASSERT(ep_addr == p_msc->ep_out &&  event == XFER_RESULT_SUCCESS && xferred_bytes == sizeof(msc_cbw_t));
 
       if ( cbw->total_bytes && p_msc->buffer )
