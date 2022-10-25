@@ -77,6 +77,7 @@ typedef struct hcd_event_s
   void *buffer;
   void* complete_cb;
   event_cb_func event_cb;
+  uint32_t id;
 
   union
   {

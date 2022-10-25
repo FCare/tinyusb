@@ -243,6 +243,11 @@ extern bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result
 
 static bool enum_request_set_addr();
 
+static uint32_t nbCmd = 0;
+
+uint32_t getCmdId() {
+  return nbCmd++;
+}
 
 static bool tuh_control_xfer_safe(uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
 {
@@ -260,7 +265,6 @@ static bool tuh_control_xfer_safe(uint8_t dev_addr, tusb_control_request_t const
   //       return true;
   //   }
   // }
-  TU_LOG2("%d\r\n", __LINE__);
   return tuh_control_xfer(dev_addr, request, buffer, complete_cb);
 }
 //--------------------------------------------------------------------+
@@ -519,6 +523,11 @@ bool tuh_init(uint8_t rhport)
 
 static bool cmdIsOnGoing = false;
 
+void usbh_can_accept_cmd() {
+  cmdIsOnGoing = false;
+}
+
+
 static void handle_osal_queue() {
   while (1)
   {
@@ -527,7 +536,6 @@ static void handle_osal_queue() {
 
     if ( osal_queue_receive(_usbh_cb_q, &cb_event) ) {
       TU_LOG2("Cmd done, call xfer_cb\n");
-      cmdIsOnGoing = false;
       uint8_t const epnum   = tu_edpt_number(cb_event.ep_addr);
       uint8_t const ep_dir  = tu_edpt_dir(cb_event.ep_addr);
       if (cb_event.dev_addr == 0)
@@ -535,6 +543,7 @@ static void handle_osal_queue() {
         // device 0 only has control endpoint
         TU_ASSERT(epnum == 0);
         usbh_control_xfer_cb(cb_event.dev_addr, cb_event.ep_addr, cb_event.result, cb_event.xferred_bytes);
+        TU_LOG2("Cmd is on going %d (%d)\n", cmdIsOnGoing, __LINE__);
       }
       else
       {
@@ -545,18 +554,23 @@ static void handle_osal_queue() {
         if ( 0 == epnum )
         {
           usbh_control_xfer_cb(cb_event.dev_addr, cb_event.ep_addr, cb_event.result, cb_event.xferred_bytes);
+          TU_LOG2("Cmd is on going %d (%d)\n", cmdIsOnGoing, __LINE__);
         }else
         {
           uint8_t drv_id = dev->ep2drv[epnum][ep_dir];
           TU_ASSERT(drv_id < USBH_CLASS_DRIVER_COUNT, );
           TU_LOG2("%s xfer callback\r\n", usbh_class_drivers[drv_id].name);
           usbh_class_drivers[drv_id].xfer_cb(cb_event.dev_addr, cb_event.ep_addr, cb_event.result, cb_event.xferred_bytes);
+          TU_LOG2("Cmd is on going %d (%d)\n", cmdIsOnGoing, __LINE__);
         }
       }
       return;
     }
 
-    if (cmdIsOnGoing) return;
+    if (cmdIsOnGoing) {
+      TU_LOG2("Do not proceed cmdIsOnGoing=%d\n", cmdIsOnGoing, __LINE__);
+      return;
+    }
 
     if ( !osal_queue_receive(_usbh_q, &event) ) {
       return;
@@ -566,6 +580,7 @@ static void handle_osal_queue() {
     {
       case HCD_EVENT_CTRL_COMMAND:
       {
+        TU_LOG2("HCD_EVENT_CTRL_COMMAND 0x%x\r\n", event.id);
         if (event.event_cb) event.event_cb(&event, true);
 
         cmdIsOnGoing = true;
@@ -573,11 +588,13 @@ static void handle_osal_queue() {
         TU_ASSERT( hcd_setup_send(event.rhport, event.dev_addr, (uint8_t const*)event.request) );
 
         if (event.event_cb) event.event_cb(&event, false);
+        TU_LOG2("HCD_EVENT_CTRL_COMMAND done 0x%x\r\n", event.id);
       }
       break;
 
       case HCD_EVENT_HOST_COMMAND:
       {
+        TU_LOG2("HCD_EVENT_HOST_COMMAND 0x%x\r\n", event.id);
         if (event.event_cb) event.event_cb(&event, true);
 
         cmdIsOnGoing = true;
@@ -585,6 +602,7 @@ static void handle_osal_queue() {
         TU_ASSERT(usbh_edpt_xfer(event.dev_addr, event.ep_addr, (uint8_t*) event.request, sizeof(msc_cbw_t)));
 
         if (event.event_cb) event.event_cb(&event, false);
+        TU_LOG2("HCD_EVENT_HOST_COMMAND done 0x%x\r\n", event.id);
       }
       break;
 
@@ -801,6 +819,9 @@ void usbh_driver_set_config_complete(uint8_t dev_addr, uint8_t itf_num)
   {
     // Invoke callback if available
     if (tuh_mount_cb) tuh_mount_cb(dev_addr);
+    if (_dev0.hub_addr != 0) {
+      (void) hub_status_pipe_queue( _dev0.hub_addr );
+    }
   }
   TU_LOG2("usbh_driver_set_config_complete done\n");
 }
@@ -841,9 +862,6 @@ static bool enum_hub_clear_reset1_complete(uint8_t dev_addr, tusb_control_reques
 
   enum_request_set_addr();
   TU_LOG2("enum_hub_clear_reset1_complete done\n");
-
-  // done with hub, waiting for next data on status pipe
-  (void) hub_status_pipe_queue( _dev0.hub_addr );
 
   return true;
 }
@@ -949,6 +967,7 @@ static bool enum_request_addr0_device_desc(void)
 #if CFG_TUH_HUB
 static bool hub_port_reset_complete(uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
+    osal_task_delay(RESET_DELAY);
     TU_ASSERT( hub_port_get_status(_dev0.hub_addr, _dev0.hub_port, _usbh_ctrl_buf, enum_hub_get_status1_complete) );
     TU_LOG2("hub_port_reset_complete done\n");
     return true;
@@ -991,7 +1010,6 @@ static bool enum_get_addr0_device_desc_complete(uint8_t dev_addr, tusb_control_r
     // after RESET_DELAY the hub_port_reset() already complete
     TU_LOG2("Should reset hub port\n");
     TU_ASSERT( hub_port_reset(_dev0.hub_addr, _dev0.hub_port, hub_port_reset_complete) );
-    osal_task_delay(RESET_DELAY);
   }
 #endif
 TU_LOG2("enum_get_addr0_device_desc_complete done\n");

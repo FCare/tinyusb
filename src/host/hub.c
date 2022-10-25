@@ -191,6 +191,7 @@ void hub_close(uint8_t dev_addr)
 
 bool hub_status_pipe_queue(uint8_t dev_addr)
 {
+  TU_LOG2("Request HUB update\n");
   hub_interface_t* hub_itf = get_itf(dev_addr);
   return usbh_edpt_xfer(dev_addr, hub_itf->ep_in, &hub_itf->status_change, 1);
 }
@@ -223,6 +224,7 @@ bool hub_set_config(uint8_t dev_addr, uint8_t itf_num)
     .wLength  = sizeof(descriptor_hub_desc_t)
   };
 
+  TU_LOG2("HUB GET DESCRIPTOR: addr = %u\r\n", dev_addr);
   TU_ASSERT( tuh_control_xfer(dev_addr, &request, _hub_buffer, config_set_port_power) );
 
   return true;
@@ -235,6 +237,7 @@ static bool config_set_port_power (uint8_t dev_addr, tusb_control_request_t cons
 
   hub_interface_t* p_hub = get_itf(dev_addr);
 
+  TU_LOG2("HUB config_set_port_power: addr = %u\r\n", dev_addr);
   // only use number of ports in hub descriptor
   descriptor_hub_desc_t const* desc_hub = (descriptor_hub_desc_t const*) _hub_buffer;
   p_hub->port_count = desc_hub->bNbrPorts;
@@ -250,12 +253,13 @@ static bool config_port_power_complete (uint8_t dev_addr, tusb_control_request_t
 {
   TU_ASSERT(XFER_RESULT_SUCCESS == result);
    hub_interface_t* p_hub = get_itf(dev_addr);
+   TU_LOG2("HUB config_port_power_complete: addr = %u\r\n", dev_addr);
 
   if (request->wIndex == p_hub->port_count)
   {
     // All ports are power -> queue notification status endpoint and
     // complete the SET CONFIGURATION
-    TU_ASSERT( usbh_edpt_xfer(dev_addr, p_hub->ep_in, &p_hub->status_change, 1) );
+    TU_ASSERT(hub_status_pipe_queue(dev_addr));
 
     usbh_driver_set_config_complete(dev_addr, p_hub->itf_num);
   }else
@@ -285,16 +289,21 @@ bool hub_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t result, uint32
 
   hub_interface_t* p_hub = get_itf(dev_addr);
 
-  TU_LOG2("  Port Status Change = 0x%02X\r\n", p_hub->status_change);
+  usbh_can_accept_cmd();
 
-  // Hub ignore bit0 in status change
-  for (uint8_t port=1; port <= p_hub->port_count; port++)
-  {
-    if ( tu_bit_test(p_hub->status_change, port) )
+  if (p_hub->ep_in == ep_addr) {
+    TU_LOG2("  Port Status Change = 0x%02X\r\n", p_hub->status_change);
+
+    // Hub ignore bit0 in status change
+    for (uint8_t port=1; port <= p_hub->port_count; port++)
     {
-      hub_port_get_status(dev_addr, port, &p_hub->port_status, connection_get_status_complete);
-      break;
+      if ( tu_bit_test(p_hub->status_change, port) )
+      {
+        hub_port_get_status(dev_addr, port, &p_hub->port_status, connection_get_status_complete);
+        return true;
+      }
     }
+    hub_status_pipe_queue(dev_addr);
   }
 
   // NOTE: next status transfer is queued by usbh.c after handling this request
@@ -361,6 +370,8 @@ static bool connection_clear_conn_change_complete (uint8_t dev_addr, tusb_contro
 static bool connection_port_reset_complete (uint8_t dev_addr, tusb_control_request_t const * request, xfer_result_t result)
 {
   TU_ASSERT(result == XFER_RESULT_SUCCESS);
+
+  TU_LOG2("connection_port_reset_complete = %d\r\n", dev_addr);
 
   // hub_interface_t* p_hub = get_itf(dev_addr);
   uint8_t const port_num = (uint8_t) request->wIndex;

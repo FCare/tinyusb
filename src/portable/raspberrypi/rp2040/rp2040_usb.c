@@ -235,7 +235,8 @@ static uint16_t sync_ep_buffer(struct hw_endpoint *ep, uint8_t buf_id)
   }
 
   // Short packet
-  if (xferred_bytes < ep->wMaxPacketSize)
+  uint32_t expectedTransfertSize = (ep->remaining_len < ep->wMaxPacketSize)?ep->remaining_len:ep->wMaxPacketSize;
+  if (xferred_bytes < expectedTransfertSize)
   {
     pico_trace("  Short packet on buffer %d with %u bytes\n", buf_id, xferred_bytes);
     // Reduce total length as this is last packet

@@ -185,8 +185,6 @@ static bool tuh_msc_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, 
   msch_interface_t* p_msc = get_itf(dev_addr);
   TU_VERIFY(p_msc->configured);
 
-  TU_LOG2("Stack MSC Cmd: \n");
-  TU_LOG2_MEM(cbw->command, cbw->cmd_len, 2);
 
   msc_cbw_t *new_cbw = (msc_cbw_t *)malloc(sizeof(msc_cbw_t));
   memcpy(new_cbw, cbw, sizeof(msc_cbw_t));
@@ -194,12 +192,16 @@ static bool tuh_msc_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, 
   {
     .dev_addr = dev_addr,
     .ep_addr  = p_msc->ep_out,
+    .id = getCmdId(),
     .event_id = HCD_EVENT_HOST_COMMAND,
     .buffer   = data,
     .request  = (void *)new_cbw,
     .complete_cb = (void *)complete_cb,
     .event_cb = msch_event_start,
   };
+
+  TU_LOG2("Stack MSC Cmd: 0x%x\n", event.id);
+  TU_LOG2_MEM(cbw->command, cbw->cmd_len, 2);
 
   hcd_event_handler(&event, false);
 
@@ -653,6 +655,7 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
   msch_interface_t* p_msc = get_itf(dev_addr);
   msc_cbw_t const * cbw = &p_msc->cbw;
   msc_csw_t       * csw = &p_msc->csw;
+  bool finished = false;
 
   if (nextToFree != NULL) {
     free(nextToFree);
@@ -688,13 +691,17 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
           }
         } else {
           csw->status = MSC_CSW_STATUS_CHECK_CONDITION;
+          usbh_can_accept_cmd();
           if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+          finished = true;
         }
       } else {
         csw->status = MSC_CSW_STATUS_CHECK_CONDITION;
+        usbh_can_accept_cmd();
         if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+        finished = true;
       }
-    return true;
+    return finished;
   }
   switch (p_msc->stage)
   {
@@ -730,7 +737,9 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
         csw->status = csw->status<<1;
         TU_LOG2("SCSI status %x\n", csw->status);
         p_msc->stage = MSC_STAGE_IDLE;
+        usbh_can_accept_cmd();
         if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
+        finished = true;
       }
     break;
 
@@ -738,7 +747,7 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
     default: break;
   }
 
-  return true;
+  return finished;
 }
 
 //--------------------------------------------------------------------+

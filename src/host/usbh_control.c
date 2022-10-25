@@ -77,7 +77,6 @@ static void tuh_control_event_cb(hcd_event_t *event, bool start) {
     _ctrl_xfer.complete_cb = event->complete_cb;
   } else {
     if (event->request != NULL) {
-      TU_LOG2("Free %d\r\n", __LINE__);
       free(event->request);
       event->request = NULL;
     }
@@ -88,25 +87,22 @@ static void tuh_control_event_cb(hcd_event_t *event, bool start) {
 bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
 {
   // TODO need to claim the endpoint first
-TU_LOG2("%d\r\n", __LINE__);
   const uint8_t rhport = usbh_get_rhport(dev_addr);
-TU_LOG2("%d %d\r\n", __LINE__, sizeof(tusb_control_request_t));
   tusb_control_request_t *new_request = (tusb_control_request_t*)malloc(sizeof(tusb_control_request_t));
-  TU_LOG2("%d\r\n", __LINE__);
   memcpy(new_request, request, sizeof(tusb_control_request_t));
 
-  TU_LOG2("%d\r\n", __LINE__);
   hcd_event_t event =
   {
     .rhport = rhport,
     .dev_addr  = dev_addr,
+    .id = getCmdId(),
     .event_id = HCD_EVENT_CTRL_COMMAND,
     .request = (void *)new_request,
     .complete_cb = (void *)complete_cb,
     .buffer = buffer,
     .event_cb = tuh_control_event_cb,
   };
-  TU_LOG2("Add handler HCD_EVENT_CTRL_COMMAND\n");
+  TU_LOG2("Add handler HCD_EVENT_CTRL_COMMAND 0x%x req 0x%x\n", event.id, request->bRequest);
   hcd_event_handler(&event, false);
   return true;
 }
@@ -149,6 +145,7 @@ bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t resu
   if (XFER_RESULT_SUCCESS != result)
   {
     TU_LOG2("Control failed: result = %d\r\n", result);
+    usbh_can_accept_cmd();
     _xfer_complete(dev_addr, result);
     // terminate transfer if any stage failed
     return true;
@@ -162,7 +159,7 @@ bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t resu
       {
         // DATA stage: initial data toggle is always 1
         hcd_edpt_xfer(rhport, dev_addr, tu_edpt_addr(0, request->bmRequestType_bit.direction), _ctrl_xfer.buffer, request->wLength);
-        return true;
+        return false;
       }
       __attribute__((fallthrough));
 
@@ -177,16 +174,19 @@ bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t resu
 
       // ACK stage: toggle is always 1
       hcd_edpt_xfer(rhport, dev_addr, tu_edpt_addr(0, 1-request->bmRequestType_bit.direction), NULL, 0);
+      return false;
     break;
 
     case STAGE_ACK:
+      usbh_can_accept_cmd();
       _xfer_complete(dev_addr, result);
+      return true;
     break;
 
     default: return false;
   }
 
-  return true;
+  return false;
 }
 
 #endif

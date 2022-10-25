@@ -52,6 +52,9 @@ bool tuh_reset(uint8_t rhport);
 // Check if host stack is already initialized
 bool tuh_inited(void);
 
+uint32_t getCmdId();
+void usbh_can_accept_cmd();
+
 // Task function should be called in main/rtos loop
 void tuh_task(void);
 void tuh_task_minimum(void);

@@ -89,7 +89,7 @@ static struct hw_endpoint *get_epx_ep(void)
 {
     uint8_t dev_addr = (usb_hw->dev_addr_ctrl & USB_ADDR_ENDP_ADDRESS_BITS) >> USB_ADDR_ENDP_ADDRESS_LSB;
     uint8_t ep_addr = (usb_hw->dev_addr_ctrl & USB_ADDR_ENDP_ENDPOINT_BITS) >> USB_ADDR_ENDP_ENDPOINT_LSB;
-    pico_trace("  epx dev %d ep %d\n", dev_addr, ep_addr);
+    pico_trace("  epx dev_addr %d ep_addr %d\n", dev_addr, ep_addr);
 
     return get_dev_ep(dev_addr, ep_addr);
 }
