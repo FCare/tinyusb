@@ -663,7 +663,7 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
     nextToFree = NULL;
   }
 
-  TU_LOG1("MSC Xfer stage %d %x %x Transfert:%x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer, event);
+  TU_LOG2("MSC Xfer stage %d %x %x Transfert:%x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer, event);
   if (event != XFER_RESULT_SUCCESS) {
       if (event == XFER_RESULT_STALLED) {
         if (p_msc->retry != 0) {
@@ -852,7 +852,7 @@ bool checkForMedia(uint8_t dev_addr, uint8_t lun) {
 
 static bool config_test_unit_ready_complete(uint8_t dev_addr, msc_cbw_t const* cbw, msc_csw_t const* csw)
 {
-    TU_LOG1("Test Unit ready Complete\n");
+    TU_LOG2("Test Unit ready Complete\n");
   if (tuh_msc_ready_cb) tuh_msc_ready_cb(dev_addr, csw->status == MSC_CSW_STATUS_GOOD);
   if (csw->status == MSC_CSW_STATUS_GOOD)
   {
