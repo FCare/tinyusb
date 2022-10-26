@@ -46,6 +46,7 @@ typedef struct
   uint8_t* buffer;
   tuh_control_complete_cb_t complete_cb;
   bool done;
+  bool bypass;
   uint8_t retry;
   xfer_result_t result;
 } usbh_control_xfer_t;
@@ -74,6 +75,7 @@ static void tuh_control_event_cb(hcd_event_t *event, bool start) {
     _ctrl_xfer.request     = *((tusb_control_request_t*)event->request);
     _ctrl_xfer.buffer      = event->buffer;
     _ctrl_xfer.stage       = STAGE_SETUP;
+    _ctrl_xfer.bypass      = false;
     _ctrl_xfer.complete_cb = event->complete_cb;
   } else {
     if (event->request != NULL) {
@@ -83,7 +85,22 @@ static void tuh_control_event_cb(hcd_event_t *event, bool start) {
   }
 
 }
+bool tuh_control_xfer_bypass (uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb) {
+  const uint8_t rhport = usbh_get_rhport(dev_addr);
+  TU_LOG2("HCD_EVENT_CTRL_BYPASS_COMMAND\r\n");
+  TU_LOG2("Control Setup (addr = %u)\n", dev_addr);
 
+  _ctrl_xfer.request     = *request;
+  _ctrl_xfer.buffer      = buffer;
+  _ctrl_xfer.stage       = STAGE_SETUP;
+  _ctrl_xfer.bypass      = true;
+  _ctrl_xfer.complete_cb = complete_cb;
+
+  // Send setup packet
+  TU_ASSERT( hcd_setup_send(rhport, dev_addr, request));
+
+  TU_LOG2("HCD_EVENT_CTRL_BYPASS_COMMAND done\r\n");
+}
 bool tuh_control_xfer (uint8_t dev_addr, tusb_control_request_t const* request, void* buffer, tuh_control_complete_cb_t complete_cb)
 {
   // TODO need to claim the endpoint first
@@ -145,7 +162,7 @@ bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t resu
   if (XFER_RESULT_SUCCESS != result)
   {
     TU_LOG2("Control failed: result = %d\r\n", result);
-    usbh_can_accept_cmd();
+    if (!_ctrl_xfer.bypass) usbh_can_accept_cmd();
     _xfer_complete(dev_addr, result);
     // terminate transfer if any stage failed
     return true;
@@ -178,7 +195,7 @@ bool usbh_control_xfer_cb (uint8_t dev_addr, uint8_t ep_addr, xfer_result_t resu
     break;
 
     case STAGE_ACK:
-      usbh_can_accept_cmd();
+      if (!_ctrl_xfer.bypass) usbh_can_accept_cmd();
       _xfer_complete(dev_addr, result);
       return true;
     break;

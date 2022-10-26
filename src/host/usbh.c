@@ -568,7 +568,7 @@ static void handle_osal_queue() {
     }
 
     if (cmdIsOnGoing) {
-      TU_LOG2("Do not proceed cmdIsOnGoing=%d\n", cmdIsOnGoing, __LINE__);
+      TU_LOG3("Do not proceed cmdIsOnGoing=%d\n", cmdIsOnGoing, __LINE__);
       return;
     }
 

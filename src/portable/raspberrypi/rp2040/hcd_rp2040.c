@@ -267,7 +267,7 @@ static void hcd_rp2040_irq(void)
     if (status & USB_INTS_STALL_BITS)
     {
         // We have rx'd a stall from the device
-        TU_LOG(2, "Stall Rec\n");
+        TU_LOG(1, "Stall Rec\n");
         handled |= USB_INTS_STALL_BITS;
         usb_hw_clear->sie_status = USB_SIE_STATUS_STALL_REC_BITS;
         hw_xfer_complete(get_epx_ep(), XFER_RESULT_STALLED);

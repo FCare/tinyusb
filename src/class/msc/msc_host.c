@@ -153,7 +153,7 @@ static bool tuh_msc_clear_feature(uint8_t dev_addr, uint8_t ep_addr, uint8_t fea
     .wLength  = 0
   };
 
-  TU_ASSERT( tuh_control_xfer(dev_addr, &request, NULL, complete_cb) );
+  TU_ASSERT( tuh_control_xfer_bypass(dev_addr, &request, NULL, complete_cb) );
   return true;
 }
 
@@ -173,6 +173,7 @@ static void msch_event_start(hcd_event_t *event, bool start) {
     p_msc->cbw = *(nextToFree);
     p_msc->stage = MSC_STAGE_CMD;
     p_msc->buffer = event->buffer;
+    p_msc->retry = 4;
     p_msc->complete_cb = (tuh_msc_complete_cb_t)event->complete_cb;
 
     TU_LOG2("Scsi Cmd: \n");
@@ -662,32 +663,33 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
     nextToFree = NULL;
   }
 
-  TU_LOG2("MSC Xfer stage %d %x %x Transfert:%x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer, event);
+  TU_LOG1("MSC Xfer stage %d %x %x Transfert:%x\n", p_msc->stage, cbw->total_bytes, p_msc->buffer, event);
   if (event != XFER_RESULT_SUCCESS) {
       if (event == XFER_RESULT_STALLED) {
         if (p_msc->retry != 0) {
           p_msc->retry--;
-          TU_LOG3("Stalled on phase %d\n", p_msc->stage);
+          TU_LOG1("Stalled on phase %d\n", p_msc->stage);
           p_msc->clear_done = false;
-          TU_LOG3("Stalled: Clear endpoint halt\n");
+          TU_LOG1("Stalled: Clear endpoint halt\n");
+          uint8_t const ep_data = (cbw->dir & TUSB_DIR_IN_MASK) ? p_msc->ep_in : p_msc->ep_out;
           tuh_msc_clear_feature(dev_addr, ep_addr ,HOST_ENDPOINT_HALT, clear_feature_complete);
           while(!p_msc->clear_done) {tuh_task();};
-          uint8_t const ep_data = (cbw->dir & TUSB_DIR_IN_MASK) ? p_msc->ep_in : p_msc->ep_out;
+          osal_task_delay(80);
           usbh_reset_endpoint_pid(dev_addr, ep_data);
-          TU_LOG3("Stalled: Retry last transfer\n");
+          TU_LOG1("Stalled: Retry last transfer\n");
           switch (p_msc->stage) {
             case MSC_STAGE_DATA:
             {
-              TU_LOG3("Restart the data stage\n");
+              TU_LOG1("Restart the data stage\n");
               TU_ASSERT(usbh_edpt_xfer(dev_addr, ep_data, p_msc->buffer, cbw->total_bytes));
             }
             break;
             case MSC_STAGE_STATUS:
-            TU_LOG3("Restart the status stage\n");
+            TU_LOG1("Restart the status stage\n");
             TU_ASSERT(usbh_edpt_xfer(dev_addr, p_msc->ep_in, (uint8_t*) &p_msc->csw, sizeof(msc_csw_t)));
             break;
             default:
-            TU_LOG3("Stalled: unknow last transfert\n");
+            TU_LOG1("Stalled: unknow last transfert\n");
           }
         } else {
           csw->status = MSC_CSW_STATUS_CHECK_CONDITION;
@@ -696,6 +698,7 @@ bool msch_xfer_cb(uint8_t dev_addr, uint8_t ep_addr, xfer_result_t event, uint32
           finished = true;
         }
       } else {
+        TU_LOG1("Stalled: still blocked - abort\n");
         csw->status = MSC_CSW_STATUS_CHECK_CONDITION;
         usbh_can_accept_cmd();
         if (p_msc->complete_cb) p_msc->complete_cb(dev_addr, cbw, csw);
@@ -841,26 +844,6 @@ static bool config_get_maxlun_complete (uint8_t dev_addr, tusb_control_request_t
   // }
 
   return true;
-}
-
-bool CheckCDCapabilities(uint8_t dev_addr, bool *canBeLoaded, bool* canBeEjected) {
-  uint8_t capabilties_buffer[256];
-  msch_interface_t* p_msc = get_itf(dev_addr);
-  msc_cbw_t const * cbw = &p_msc->cbw;
-
-  *canBeEjected = true;
-  *canBeLoaded = true;
-
-  if (tuh_msc_mode_sense(dev_addr, cbw->lun, 0x2A, 0x0, 0x0, 128, &capabilties_buffer[0], NULL)) {
-    uint16_t length = (capabilties_buffer[0]<<8)+capabilties_buffer[1];
-    uint16_t block_descriptor_length = (capabilties_buffer[6]<<8)+capabilties_buffer[7]+8;
-    if ((length < 128) && (block_descriptor_length<length)) {
-      if ((capabilties_buffer[block_descriptor_length + 6] >> 5) == 0) *canBeLoaded = false;
-      if ((capabilties_buffer[block_descriptor_length + 6] & 0x8) == 0) *canBeEjected = false;
-      return true;
-    }
-  }
-  return false;
 }
 
 bool checkForMedia(uint8_t dev_addr, uint8_t lun) {
