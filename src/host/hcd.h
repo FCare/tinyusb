@@ -74,6 +74,7 @@ typedef struct hcd_event_s
   uint8_t dev_addr;
   uint8_t ep_addr;
   void* request;
+  uint16_t request_size;
   void *buffer;
   void* complete_cb;
   event_cb_func event_cb;

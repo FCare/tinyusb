@@ -197,6 +197,7 @@ static bool tuh_msc_command(uint8_t dev_addr, msc_cbw_t const* cbw, void* data, 
     .event_id = HCD_EVENT_HOST_COMMAND,
     .buffer   = data,
     .request  = (void *)new_cbw,
+    .request_size = sizeof(msc_cbw_t),
     .complete_cb = (void *)complete_cb,
     .event_cb = msch_event_start,
   };

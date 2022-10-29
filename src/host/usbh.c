@@ -599,7 +599,7 @@ static void handle_osal_queue() {
 
         cmdIsOnGoing = true;
 
-        TU_ASSERT(usbh_edpt_xfer(event.dev_addr, event.ep_addr, (uint8_t*) event.request, sizeof(msc_cbw_t)));
+        TU_ASSERT(usbh_edpt_xfer(event.dev_addr, event.ep_addr, (uint8_t*) event.request, event.request_size));
 
         if (event.event_cb) event.event_cb(&event, false);
         TU_LOG2("HCD_EVENT_HOST_COMMAND done 0x%x\r\n", event.id);
